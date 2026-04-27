@@ -22,6 +22,63 @@ const onlineChannelId = process.env.ONLINE_CHANNEL_ID;
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
 });
+// --- ONLINE LIST --- ///
+async function updateOnlineTracker() {
+    const channel = client.channels.cache.get(process.env.ONLINE_CHANNEL_ID);
+    if (!channel) return;
+
+    // 1. Setup the Lists
+    const puffinGuilds = ["Puffin Dragons", "Slightly Smaller Dragons", "Noobemon"];
+    const trackedGuilds = db.prepare('SELECT * FROM tracked_guilds').all();
+    const individualTrackers = db.prepare('SELECT * FROM trackers').all();
+
+    const results = { PUFFIN: [], FRIEND: [], ENEMY: [] };
+
+    // 2. Fetch Guild Members (TibiaData v4)
+    const fetchGuild = async (guildName, type) => {
+        try {
+            const res = await fetch(`https://api.tibiadata.com/v4/guild/${encodeURIComponent(guildName)}`);
+            const data = await res.json();
+            const members = data.guild.members || [];
+            members.forEach(m => {
+                if (m.status === "online") {
+                    results[type].push(`• **${m.name}** (${m.level} ${m.vocation.split(' ').map(s => s[0]).join('')})`);
+                }
+            });
+        } catch (e) { console.error(`Error fetching guild ${guildName}`); }
+    };
+
+    // Process all Guilds
+    for (const g of puffinGuilds) await fetchGuild(g, 'PUFFIN');
+    for (const g of trackedGuilds) await fetchGuild(g.guild_name, g.type);
+
+    // 3. Process Individual Trackers
+    for (const char of individualTrackers) {
+        try {
+            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(char.character_name)}`);
+            const data = await res.json();
+            const c = data.character.character;
+            if (c.status === "online") {
+                results[char.tracker_type].push(`• **${c.name}** (${c.level} ${c.vocation.split(' ').map(s => s[0]).join('')})`);
+            }
+        } catch (e) {}
+    }
+
+    // 4. Build and Send Embed (as before)
+    const onlineEmbed = {
+        title: "📡 Puffin Tactical Overview",
+        color: 0x2f3136,
+        fields: [
+            { name: "🛡️ Puffins Online", value: results.PUFFIN.join('\n') || "*None*", inline: false },
+            { name: "🤝 Guild Friends", value: results.FRIEND.join('\n') || "*None*", inline: false },
+            { name: "💀 Enemy Watch", value: results.ENEMY.join('\n') || "*None*", inline: false }
+        ],
+        footer: { text: `Last updated: ${new Date().toLocaleTimeString()}` }
+    };
+
+    if (lastOnlineMessage) try { await lastOnlineMessage.delete(); } catch (e) {}
+    lastOnlineMessage = await channel.send({ embeds: [onlineEmbed] });
+}
 
 
 // --- LEVEL TRACKER --- //
@@ -223,6 +280,34 @@ client.on('messageCreate', async message => {
 
     if (message.content === '!hail') message.reply('HAIL FORTUNA FELIS! 👑');
     if (message.content === '!roster') displayRoster(message.channel);
+
+    // Example for Guild Tracking
+if (message.content.startsWith('!trackfriendguild')) {
+    const guildName = message.content.replace('!trackfriendguild ', '').trim();
+    db.prepare('INSERT OR REPLACE INTO tracked_guilds (guild_name, type) VALUES (?, ?)').run(guildName, 'FRIEND');
+    message.reply(`🤝 Now tracking all members of **${guildName}** as friends!`);
+}
+
+if (message.content.startsWith('!trackenemyguild')) {
+    const guildName = message.content.replace('!trackenemyguild ', '').trim();
+    db.prepare('INSERT OR REPLACE INTO tracked_guilds (guild_name, type) VALUES (?, ?)').run(guildName, 'ENEMY');
+    message.reply(`💀 **${guildName}** has been added to the Enemy Watchlist!`);
+}
+
+// Example for Individual Tracking
+if (message.content.startsWith('!trackenemy ')) {
+    const charName = message.content.replace('!trackenemy ', '').trim();
+    db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level) VALUES (?, ?, ?)')
+      .run(charName, 'ENEMY', 0);
+    message.reply(`🎯 Targeted **${charName}** for death and online tracking.`);
+}
+
+if (message.content.startsWith('!trackfriend ')) {
+    const charName = message.content.replace('!trackfriend ', '').trim();
+    db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level) VALUES (?, ?, ?)')
+      .run(charName, 'ENEMY', 0);
+    message.reply(`🤝 Targeted **${charName}** for death and online tracking.`);
+}    
 
     if (isAdmin) {
         if (message.content === '!announce') {
