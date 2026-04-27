@@ -7,6 +7,7 @@ const {
 } = require('discord.js');
 const messages = require('./messages.js');
 const db = require('./database.js'); 
+const trackerChannelId = process.env.TRACKER_CHANNEL_ID;
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
@@ -22,37 +23,50 @@ client.once('clientReady', () => {
 
 // --- LEVEL TRACKER --- //
 async function runTracker() {
+    const channel = client.channels.cache.get(trackerChannelId);
+    if (!channel) return console.error("❌ Tracker channel not found! Check your ID.");
+
     const trackedChars = db.prepare('SELECT * FROM trackers').all();
-    const channel = client.channels.cache.get('YOUR_ANNOUNCEMENT_CHANNEL_ID');
 
     for (const char of trackedChars) {
         try {
-            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(char.character_name)}`);
-            const data = await res.json();
+            // Fetch data from TibiaData API
+            const response = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(char.character_name)}`);
+            const data = await response.json();
+            
+            if (!data.character || !data.character.character) continue;
+            
             const current = data.character.character;
 
-            // 📈 LEVEL UP CHECK
+            // 📈 LEVEL UP LOGIC
             if (char.track_levels && current.level > char.last_level) {
-                const msg = getPuffinMessage('level', current.name, current.level, current.vocation);
-                channel.send(msg);
+                const levelMsg = getPuffinTrackerMessage('levelUp', current.name, current.level, current.vocation);
+                await channel.send(levelMsg);
+                
+                // Update DB so we don't announce the same level twice
                 db.prepare('UPDATE trackers SET last_level = ? WHERE character_name = ?').run(current.level, current.name);
             }
 
-            // 💀 DEATH CHECK (TibiaData shows recent deaths)
+            // 💀 DEATH LOGIC
             if (char.track_deaths && data.character.deaths?.length > 0) {
                 const latestDeath = data.character.deaths[0];
                 const deathTime = new Date(latestDeath.time).getTime();
-                // Logic: Only announce if death happened in the last 15 mins
+                
+                // Only announce if the death happened in the last 15 minutes to avoid old news
                 if (Date.now() - deathTime < 15 * 60 * 1000) {
-                   channel.send(getPuffinMessage('death', current.name, latestDeath.level, current.vocation, latestDeath.reason));
+                    const deathMsg = getPuffinTrackerMessage('death', current.name, latestDeath.level, current.vocation, latestDeath.reason);
+                    await channel.send(deathMsg);
                 }
             }
-        } catch (e) { console.error(`Tracker error for ${char.character_name}:`, e); }
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limiting
+        } catch (error) {
+            console.error(`Error tracking ${char.character_name}:`, error);
+        }
+        // Small delay between characters to respect API rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
 }
 
-// Run every 10 minutes
+// Start the loop: Checks every 10 minutes
 setInterval(runTracker, 10 * 60 * 1000);
 
 function getPuffinTrackerMessage(type, name, level, vocation, reason = "") {
