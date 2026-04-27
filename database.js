@@ -47,4 +47,16 @@ db.prepare(`
 
 console.log("💾 Whitelist Memory Banks: ONLINE");
 
+// ✅ NEW: Trackers Table for Levels & Deaths
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS trackers (
+        discord_user_id TEXT,
+        character_name TEXT PRIMARY KEY,
+        last_level INTEGER,
+        track_deaths BOOLEAN DEFAULT 1,
+        track_levels BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`).run();
+
 module.exports = db;
