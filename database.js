@@ -62,4 +62,11 @@ try {
     db.prepare("ALTER TABLE trackers ADD COLUMN tracker_type TEXT DEFAULT 'PUFFIN'").run();
 } catch (err) {}
 
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS tracked_guilds (
+        guild_name TEXT PRIMARY KEY,
+        type TEXT -- 'FRIEND' or 'ENEMY'
+    )
+`).run();
+
 module.exports = db;
