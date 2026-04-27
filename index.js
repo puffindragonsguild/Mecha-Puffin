@@ -78,23 +78,27 @@ async function displayRoster(target) {
             const mainTeam = mainList.slice(0, maxPlayers);
             const puffinReserves = mainList.slice(maxPlayers);
 
-            // ✅ REMOVED DISCORD ID TAG FROM LIST
-            const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+            // ✅ Format: Emoji Character name (LVL VOC) + Royal Crown for the Queen
+            const formatPlayer = (p) => {
+                const crown = (p.character_name === "Fortuna Felis") ? "👑 " : "";
+                return `• ${crown}${p.vocation.split(' ')[0]} **${p.character_name}** (${p.level} ${p.vocation.split(' ')[1]})`;
+            };
+
+            const mainText = mainTeam.map(formatPlayer).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
             if (puffinReserves.length > 0) {
-                const resText = puffinReserves.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                const resText = puffinReserves.map(formatPlayer).join('\n');
                 rosterEmbed.fields.push({ name: `⏳ ${name} PUFFIN RESERVES`, value: resText, inline: false });
             }
 
             if (publicQueue.length > 0) {
-                const publicText = publicQueue.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                const publicText = publicQueue.map(formatPlayer).join('\n');
                 rosterEmbed.fields.push({ name: `📢 ${name} PUBLIC QUEUE (Waitlist)`, value: publicText, inline: false });
             }
 
             if (lastResorts.length > 0) {
-                // ✅ REMOVED DISCORD ID TAG FROM LIST
-                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
+                const lastText = lastResorts.map(formatPlayer).join('\n');
                 rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
             }
         }
