@@ -55,6 +55,77 @@ module.exports = {
         
         
     ],
+// 📈 Level Up Announcements
+    levelUp: {
+        EK: [
+            "🛡️ **{name}** hit level **({level} EK)**! More meat for the meat-shield! The Queen is pleased.",
+            "🛡️ Look at the muscles on **{name}**! Now level **({level} EK)**. Dennis is shaking in his boots."
+        ],
+        ED: [
+            "❄️ Our fridge is getting colder! **{name}** reached level **({level} ED)**. Keep those heals coming!",
+            "❄️ **{name}** is now level **({level} ED)**. More mana for the Queen's favor!"
+        ],
+        RP: [
+            "🏹 **{name}** hit level **({level} RP)**! Hopefully, their aim is better than their Chelsea takes.",
+            "🏹 Look at those distance skills! **{name}** is now level **({level} RP)**. Don't shoot an eye out!"
+        ],
+        MS: [
+            "🔥 **{name}** hit level **({level} MS)**! The fires of destruction grow stronger!",
+            "🔥 More magic power! **{name}** is now level **({level} MS)**. Try not to UE the block, please."
+        ],
+        GENERIC: [
+            "🎉 **{name}** has reached level **({level})**! The Puffin Dragons grow stronger!",
+            "🎊 Level **({level})** reached! **{name}** is truly a dedicated subject of the Queen."
+        ],
+        MONK: [
+        "🤡 Repent! The shirtless wonder **{name}** hit level **({level} Monk)**. Still no vocation? For shame.",
+        "🤡 **{name}** is now level **({level} Monk)**. The Queen wonders when you'll join civilization and get a real job."
+    ]
+    },
+
+    // 💀 Death Announcements
+    death: {
+        EK: [
+            "🪦 The shield has shattered! **{name}** died at level **({level} EK)** to **{reason}**. Dennis would have blocked it better.",
+            "🪦 **{name}** took a dirt nap at level **({level} EK)** thanks to **{reason}**. Someone check the healer!"
+        ],
+        ED: [
+            "🪦 Who is going to heal us now? **{name}** fell to **{reason}** at level **({level} ED)**.",
+            "🪦 **{name}** ran out of mana! A level **({level} ED)** tragedy caused by **{reason}**."
+        ],
+        RP: [
+            "🪦 **{name}** was too busy watching the Chelsea score and died to **{reason}** at level **({level} RP)**.",
+            "🪦 Out of stars? **{name}** level **({level} RP)** died to **{reason}**."
+        ],
+        MS: [
+            "🪦 **{name}** was too squishy! Level **({level} MS)** fell to **{reason}**.",
+            "🪦 A sudden lack of Utamo Vita? **{name}** level **({level} MS)** died to **{reason}**."
+        ],
+        GENERIC: [
+            "🪦 **{name}** has fallen! Level **({level})** was cut short by **{reason}**. A moment of silence.",
+            "🪦 **{reason}** claimed the life of **{name}** at level **({level})**. The Queen is unimpressed."
+        ],
+        MONK: [
+        "🪦 Finally, some good news. The Monk **{name}** died at level **({level})** to **{reason}**. Should have worn a shirt.",
+        "🪦 A shirtless tragedy! **{name}** fell to **{reason}** at level **({level} Monk)**. Back to the depot with you!"
+    ]
+    },
+
+    // 👑 ROYAL ANNOUNCEMENTS (Fortuna Felis Only)
+    queenAnnouncements: {
+        level: [
+            "👑 **LONG LIVE THE QUEEN!** Her Majesty **Fortuna Felis** has ascended to level **{level}**!",
+            "👑 The heavens tremble as **Fortuna Felis** reaches level **{level}**! All hail the Puffin Queen!",
+            "👑 A royal progression! **Fortuna Felis** is now level **{level}**. Our fridge remains the coldest in the land!"
+        ],
+        death: [
+            "😱 **BLASPHEMY!** The Queen has been struck down at level **{level}** by **{reason}**! Prepare the executioner for this monster!",
+            "🥀 A dark day for the Puffin Dragons. **Fortuna Felis** has fallen to **{reason}** at level **{level}**. Dennis, explain yourself!",
+            "⚔️ **TO ARMS!** Our Queen **Fortuna Felis** was slain by **{reason}** at level **{level}**. We shall have our revenge!"
+        ]
+    }
+
+    
     // A handy function to pick a random message from the lists above
     getRandom: function(array) {
         return array[Math.floor(Math.random() * array.length)];
