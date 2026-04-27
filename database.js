@@ -58,5 +58,8 @@ db.prepare(`
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
 `).run();
+try {
+    db.prepare("ALTER TABLE trackers ADD COLUMN tracker_type TEXT DEFAULT 'PUFFIN'").run();
+} catch (err) {}
 
 module.exports = db;
