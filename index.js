@@ -16,10 +16,13 @@ const client = new Client({
 let gatesOpen = false;
 let hypeInterval;
 let lastRosterMessage = null; // ✅ Keeps track of the message to delete
+let lastOnlineMessage = null; // ✅ Tracks the online list to delete it later
+const onlineChannelId = process.env.ONLINE_CHANNEL_ID;
 
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
 });
+
 
 // --- LEVEL TRACKER --- //
 async function runTracker() {
