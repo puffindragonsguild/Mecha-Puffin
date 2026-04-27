@@ -20,6 +20,43 @@ client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
 });
 
+// --- LEVEL TRACKER --- //
+async function runTracker() {
+    const trackedChars = db.prepare('SELECT * FROM trackers').all();
+    const channel = client.channels.cache.get('YOUR_ANNOUNCEMENT_CHANNEL_ID');
+
+    for (const char of trackedChars) {
+        try {
+            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(char.character_name)}`);
+            const data = await res.json();
+            const current = data.character.character;
+
+            // 📈 LEVEL UP CHECK
+            if (char.track_levels && current.level > char.last_level) {
+                const msg = getPuffinMessage('level', current.name, current.level, current.vocation);
+                channel.send(msg);
+                db.prepare('UPDATE trackers SET last_level = ? WHERE character_name = ?').run(current.level, current.name);
+            }
+
+            // 💀 DEATH CHECK (TibiaData shows recent deaths)
+            if (char.track_deaths && data.character.deaths?.length > 0) {
+                const latestDeath = data.character.deaths[0];
+                const deathTime = new Date(latestDeath.time).getTime();
+                // Logic: Only announce if death happened in the last 15 mins
+                if (Date.now() - deathTime < 15 * 60 * 1000) {
+                   channel.send(getPuffinMessage('death', current.name, latestDeath.level, current.vocation, latestDeath.reason));
+                }
+            }
+        } catch (e) { console.error(`Tracker error for ${char.character_name}:`, e); }
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limiting
+    }
+}
+
+// Run every 10 minutes
+setInterval(runTracker, 10 * 60 * 1000);
+
+
+
 // --- DATE FUNCTION --- //
 function getNextWednesday() {
     const today = new Date();
