@@ -13,7 +13,8 @@ const client = new Client({
 });
 
 let gatesOpen = false;
-let hypeInterval; 
+let hypeInterval;
+let lastRosterMessage = null; // ✅ Keeps track of the message to delete
 
 client.once('clientReady', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
@@ -31,7 +32,12 @@ function getNextWednesday() {
 // --- REUSABLE ROSTER FUNCTION ---
 async function displayRoster(target) {
     const allSignups = db.prepare('SELECT * FROM signups ORDER BY id ASC').all();
-    if (allSignups.length === 0) return target.send("📭 **The roster is empty!**");
+    if (allSignups.length === 0) return;
+
+    // ✅ DELETE PREVIOUS ROSTER TO REDUCE SPAM
+    if (lastRosterMessage) {
+        try { await lastRosterMessage.delete(); } catch (e) { console.error("Could not delete old roster"); }
+    }
 
     const rosterEmbed = { title: "📜 Official Raid Roster", color: 0x0099ff, fields: [] };
     const maxPlayers = 15;
@@ -72,7 +78,8 @@ async function displayRoster(target) {
             const mainTeam = mainList.slice(0, maxPlayers);
             const puffinReserves = mainList.slice(maxPlayers);
 
-            const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
+            // ✅ REMOVED DISCORD ID TAG FROM LIST
+            const mainText = mainTeam.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
             rosterEmbed.fields.push({ name: `${emoji} ${name} TEAM (${mainTeam.length}/${maxPlayers})`, value: mainText || "Empty", inline: false });
 
             if (puffinReserves.length > 0) {
@@ -86,7 +93,8 @@ async function displayRoster(target) {
             }
 
             if (lastResorts.length > 0) {
-                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation}) <@${p.discord_user_id}>`).join('\n');
+                // ✅ REMOVED DISCORD ID TAG FROM LIST
+                const lastText = lastResorts.map(p => `• **${p.character_name}** [Lvl ${p.level}] (${p.vocation})`).join('\n');
                 rosterEmbed.fields.push({ name: `🆘 ${name} LAST RESORT RESERVES`, value: lastText, inline: false });
             }
         }
@@ -100,7 +108,8 @@ async function displayRoster(target) {
         text: (windowExpired ? "✅ Public queue merged." : `🕒 Public queue merges in ${timeLeft.toFixed(1)}h.`) + "\n❌ Type !dropout to flee"
     };
 
-    return target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
+    // ✅ SAVE THE NEW MESSAGE
+    lastRosterMessage = await target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
 }
 
 // --- HYPE LOOP ---
