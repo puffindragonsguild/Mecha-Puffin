@@ -55,7 +55,40 @@ async function runTracker() {
 // Run every 10 minutes
 setInterval(runTracker, 10 * 60 * 1000);
 
+function getPuffinTrackerMessage(type, name, level, vocation, reason = "") {
+    // 1. Priority: The Queen
+    if (name === "Fortuna Felis") {
+        const queenList = messages.queenAnnouncements[type];
+        return messages.getRandom(queenList)
+            .replace('{level}', level)
+            .replace('{reason}', reason);
+    }
 
+    // 2. Priority: The Monk Roast
+    const rawVoc = vocation.toUpperCase();
+    if (rawVoc.includes('MONK') || rawVoc === 'NONE') {
+        const monkList = messages[type].MONK;
+        return messages.getRandom(monkList)
+            .replace('{name}', `**${name}**`)
+            .replace('{level}', level)
+            .replace('{reason}', reason);
+    }
+
+    // 3. Standard Vocation Logic
+    let voc = "GENERIC";
+    if (rawVoc.includes('KNIGHT')) voc = 'EK';
+    else if (rawVoc.includes('DRUID')) voc = 'ED';
+    else if (rawVoc.includes('SORCERER')) voc = 'MS';
+    else if (rawVoc.includes('PALADIN')) voc = 'RP';
+
+    const list = messages[type][voc];
+    const pick = messages.getRandom(list);
+    
+    return pick
+        .replace('{name}', `**${name}**`)
+        .replace('{level}', level)
+        .replace('{reason}', reason);
+}
 
 // --- DATE FUNCTION --- //
 function getNextWednesday() {
