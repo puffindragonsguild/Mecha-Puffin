@@ -104,7 +104,7 @@ async function displayRoster(target) {
         }
     };
 
-    if (hasDT) { addSection('LLK', '⚔️', 'LLK'); addSection('HoD', '🛡️', 'HOD'); }
+    if (hasDT) { addSection('LLK', '📖', 'LLK'); addSection('HoD', '🌎', 'HOD'); }
     if (hasFeru) { addSection('FERUMBRAS', '🧙‍♂️', 'FERU'); }
 
     const timeLeft = Math.max(0, (fortyEightHours - (Date.now() - firstSignupTime)) / (1000 * 60 * 60));
@@ -175,7 +175,7 @@ client.on('messageCreate', async message => {
             );
 
             message.channel.send({ embeds: [dtEmbed], components: [row] });
-            startHypeLoop(message, 'Double Trouble');
+            startHypeLoop(message, 'LAST LOREKEEPER & WORLD DEVOURER');
         }
 
         if (message.content === '!open feru') {
