@@ -123,7 +123,7 @@ module.exports = {
             "🥀 A dark day for the Puffin Dragons. **Fortuna Felis** has fallen to **{reason}** at level **{level}**. Dennis, explain yourself!",
             "⚔️ **TO ARMS!** Our Queen **Fortuna Felis** was slain by **{reason}** at level **{level}**. We shall have our revenge!"
         ]
-    }
+    },
 
     
     // A handy function to pick a random message from the lists above
