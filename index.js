@@ -121,7 +121,7 @@ const startHypeLoop = (message, raidType) => {
     if (hypeInterval) clearInterval(hypeInterval);
     hypeInterval = setInterval(() => {
         if (!gatesOpen) return clearInterval(hypeInterval);
-        message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${raidType}**!`);
+        message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\n@everyone Still need Puffins for **${raidType}**!\n\n📅 **Wednesday ${raidDate}** at **22:00 CEST**`);
         displayRoster(message.channel);
     }, 24 * 60 * 60 * 1000); 
 };
