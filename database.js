@@ -30,6 +30,7 @@ db.prepare(`
         track_levels INTEGER DEFAULT 1,
         track_deaths INTEGER DEFAULT 1,
         tracker_type TEXT DEFAULT 'PUFFIN',
+        main_char TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
 `).run();
