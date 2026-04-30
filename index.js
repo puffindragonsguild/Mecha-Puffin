@@ -22,9 +22,22 @@ let lastLotteryMessage = null;
 
 client.once('ready', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
+
+    // Lottery Auto //
+    async function runWeeklyLotteryUpdate() {
+    const now = new Date();
+    // getDay() 1 = Monday. getHours() 10 = 10 AM.
+    if (now.getDay() === 1 && now.getHours() === 10) {
+        const channel = client.channels.cache.get(trackerChannelId); 
+        if (channel) postLotteryUpdate(channel);
+    }
+}
+    
     // Start tracking loops
     setInterval(updateOnlineTracker, 5 * 60 * 1000); // 5 mins
     setInterval(runTracker, 10 * 60 * 1000);         // 10 mins
+    setInterval(runWeeklyLotteryUpdate, 60 * 60 * 1000);
+    
 });
 // --- LOTTERY UPDATE --- //
 
@@ -35,24 +48,28 @@ async function postLotteryUpdate(targetChannel) {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
         
-        // ✅ NEW: This splits by comma but IGNORES commas inside quotes
-        const rows = csvText.split('\n').map(line => {
+        // Improved Regex for CSV parsing
+        const rows = csvText.split(/\r?\n/).filter(line => line.trim() !== "").map(line => {
             const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
             return matches ? matches.map(val => val.replace(/"/g, '').trim()) : [];
         });
 
-        if (rows.length < 5) return console.error("CSV data incomplete.");
+        if (rows.length < 5) {
+            console.error("❌ CSV data is too short. Check your spreadsheet rows.");
+            return;
+        }
 
-        // 1. Map Data from Column A (Names) and Column B (Tickets)
+        // 1. Buyers (Col A) and Tickets (Col B)
         const buyers = rows.slice(1)
             .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
             .map(r => r[0].toLowerCase());
 
-        // 2. Map Prizes from Column I (Index 8)
-        const prize1 = rows[1][8] || "0";
-        const prize2 = rows[2][8] || "0";
-        const prize3 = rows[3][8] || "0";
-        const totalTickets = parseInt(rows[4][8]) || 100;
+        // 2. Map Prizes/Totals from Column I (Index 8)
+        // Adding safety checks so it doesn't crash if a row is missing
+        const prize1 = rows[1]?.[8] || "0";
+        const prize2 = rows[2]?.[8] || "0";
+        const prize3 = rows[3]?.[8] || "0";
+        const totalTickets = parseInt(rows[4]?.[8]) || 100;
 
         const ticketsSold = buyers.length;
         const ticketsLeft = Math.max(0, totalTickets - ticketsSold);
@@ -61,7 +78,7 @@ async function postLotteryUpdate(targetChannel) {
         const puffins = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
         const unpaid = puffins.filter(p => !buyers.includes(p.character_name.toLowerCase()));
 
-        // 4. Build Message
+        // 4. Build Report
         let report = `## 🎲 Weekly Lottery Update\n\n`;
         report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
         report += `🎟️ **Tickets left:** ${ticketsLeft}\n\n`;
@@ -69,32 +86,25 @@ async function postLotteryUpdate(targetChannel) {
         report += `🥇 **1st** - ${prize1} gold\n`;
         report += `🥈 **2nd** - ${prize2} gold\n`;
         report += `🥉 **3rd** - ${prize3} gold\n\n`;
-        report += `*To be in the draw, parcel gold to the Lottery Master with your numbers!*\n\n`;
+        report += `*Parcel gold to the Lottery Master in-game to join!*\n\n`;
         report += `--- \n### ⚠️ ATTENTION:\n`;
         
         if (unpaid.length > 0) {
             const pings = unpaid.map(m => m.discord_user_id ? `<@${m.discord_user_id}>` : `**${m.character_name}**`).join(' ');
-            report += `The following members are missing their mandatory ticket. **The Queen is displeased.**\n\n${pings}`;
+            report += `Mandatory tickets missing! **The Queen is displeased.**\n\n${pings}`;
         } else {
             report += `✅ **The Queen is pleased.** All Puffins have fulfilled their duty.`;
         }
 
-        // ✅ 5. Delete old message and post new
+        // 5. Delete and Repost
         if (lastLotteryMessage) {
-            try { await lastLotteryMessage.delete(); } catch (e) {}
+            try { await lastLotteryMessage.delete(); } catch (e) { console.log("Old lottery message already gone."); }
         }
 
         lastLotteryMessage = await targetChannel.send(report);
 
     } catch (error) {
-        console.error("Lottery Update Failed:", error);
-    }
-    async function runWeeklyLotteryUpdate() {
-    const now = new Date();
-    // getDay() 1 = Monday. getHours() 10 = 10 AM.
-    if (now.getDay() === 1 && now.getHours() === 10) {
-        const channel = client.channels.cache.get(trackerChannelId); 
-        if (channel) postLotteryUpdate(channel);
+        console.error("❌ Lottery Update Error:", error);
     }
 }
 
