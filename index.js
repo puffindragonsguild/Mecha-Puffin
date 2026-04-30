@@ -47,87 +47,67 @@ async function postLotteryUpdate(targetChannel) {
     try {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
-        
-        // 1. Clean the CSV data and split into rows
-        const rows = csvText.split(/\r?\n/).map(line => 
-            line.split(',').map(cell => cell.replace(/"/g, '').trim())
-        );
+        const rows = csvText.split(/\r?\n/).map(line => line.split(',').map(cell => cell.replace(/"/g, '').trim()));
 
-        // 2. Map only the names present in Column A (the current roster)
-        const peopleOnSheet = rows.slice(1)
-            .map(r => r[0] ? r[0].toLowerCase() : null)
-            .filter(name => name !== null && name !== "");
-
-        // 3. Map Buyers from Column A & B (Index 0 and 1)
-        // A player is "paid" if their name is in Col A and Col B is > 0
+        // 1. Get Buyers (those with > 0 tickets)
         const buyers = rows.slice(1)
             .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
             .map(r => r[0].toLowerCase());
 
-        // 4. Map Ticket Stats from D2 and D3 (Index 3 for Column D)
-        const ticketsSold = rows[1]?.[3] || "0";      // D2: Total tickets bought
-        const ticketsLeft = rows[2]?.[3] || "0";      // D3: Total tickets remaining
+        // 2. Get All Puffins from DB
+        const allPuffins = db.prepare("SELECT character_name, main_char, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
 
-        // 5. Helper for Prizes (Label-search logic)
-        const getFullPrizeValue = (label) => {
-            const row = rows.find(r => r.some(cell => cell.includes(label)));
-            if (!row) return "0";
-            const labelIndex = row.findIndex(cell => cell.includes(label));
-            let valueParts = [];
-            for (let i = labelIndex + 1; i < row.length; i++) {
-                if (row[i] === "" || isNaN(row[i].replace(/,/g, ''))) break;
-                valueParts.push(row[i]);
+        // 3. Logic: Who hasn't paid?
+        const unpaidPuffins = allPuffins.filter(p => {
+            const myName = p.character_name.toLowerCase();
+            const myMain = p.main_char ? p.main_char.toLowerCase() : myName;
+            
+            // A Puffin is only "Unpaid" if neither their Name nor their Main is in the buyers list
+            return !buyers.includes(myName) && !buyers.includes(myMain);
+        });
+
+        // 4. Build Report (Stats & Prizes)
+        const ticketsSold = rows[1]?.[3] || "0";
+        const ticketsLeft = rows[2]?.[3] || "0";
+        const getVal = (lbl) => {
+            const r = rows.find(row => row.some(c => c.includes(lbl)));
+            if (!r) return "0";
+            const idx = r.findIndex(c => c.includes(lbl));
+            let parts = [];
+            for (let i = idx + 1; i < r.length; i++) {
+                if (r[i] === "" || isNaN(r[i].replace(/,/g, ''))) break;
+                parts.push(r[i]);
             }
-            return valueParts.join(',') || "0";
+            return parts.join(',') || "0";
         };
 
-        const prize1 = getFullPrizeValue("1st Prize");
-        const prize2 = getFullPrizeValue("2nd Prize");
-        const prize3 = getFullPrizeValue("3rd Prize");
-
-        // 6. Cross-reference: Shame ONLY those on the sheet who are PUFFINs in our DB and haven't paid
-        const puffinDB = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
-        const puffinNamesDB = puffinDB.map(p => p.character_name.toLowerCase());
-
-        const unpaidPuffins = peopleOnSheet.filter(name => 
-            puffinNamesDB.includes(name) && !buyers.includes(name)
-        );
-
-        // 7. Build the Report
-        let report = `## 🎲 Weekly Lottery Update\n\n`;
-        report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
-        report += `🎟️ **Tickets remaining:** ${ticketsLeft}\n\n`;
-        report += `### 💰 Prize Pool Currently Stands At:\n`;
-        report += `🥇 **1st** - ${prize1} gold\n`;
-        report += `🥈 **2nd** - ${prize2} gold\n`;
-        report += `🥉 **3rd** - ${prize3} gold\n\n`;
-        report += `*Parcel gold to the Lottery Master in-game to join! Mandatory 1 ticket per Puffin.*\n\n`;
+        let report = `## 🎲 Weekly Lottery Update\n\n🎟️ **Sold:** ${ticketsSold} | 🎟️ **Left:** ${ticketsLeft}\n\n`;
+        report += `🥇 **1st:** ${getVal("1st Prize")} | 🥈 **2nd:** ${getVal("2nd Prize")} | 🥉 **3rd:** ${getVal("3rd Prize")}\n\n`;
         report += `--- \n### ⚠️ THE SHAME LIST:\n`;
         
         if (unpaidPuffins.length > 0) {
-            report += `The following members are on the roster but have **not** paid for their mandatory ticket. **The Queen is displeased.**\n\n`;
-            
-            const listItems = unpaidPuffins.map(name => {
-                const dbMatch = puffinDB.find(p => p.character_name.toLowerCase() === name);
-                // Since we filtered by puffinNamesDB, dbMatch will always exist here
-                const displayName = dbMatch.discord_user_id ? `<@${dbMatch.discord_user_id}>` : `**${name.charAt(0).toUpperCase() + name.slice(1)}**`;
-                return `• ${displayName}`;
+            // Group by Discord ID to avoid pinging the same person multiple times for alts
+            const uniqueUnpaid = [];
+            const seenUsers = new Set();
+
+            unpaidPuffins.forEach(p => {
+                if (!p.discord_user_id || !seenUsers.has(p.discord_user_id)) {
+                    uniqueUnpaid.push(p);
+                    if (p.discord_user_id) seenUsers.add(p.discord_user_id);
+                }
             });
 
-            report += listItems.join('\n');
+            report += uniqueUnpaid.map(p => {
+                const display = p.discord_user_id ? `<@${p.discord_user_id}>` : `**${p.character_name}**`;
+                return `• ${display}`;
+            }).join('\n');
         } else {
-            report += `✅ **The Queen is pleased.** All active Puffins have fulfilled their duty.`;
+            report += `✅ **The Queen is pleased.** All Puffins have fulfilled their duty.`;
         }
 
-        // 8. Message Management
-        if (lastLotteryMessage) {
-            try { await lastLotteryMessage.delete(); } catch (e) {}
-        }
+        if (lastLotteryMessage) try { await lastLotteryMessage.delete(); } catch (e) {}
         lastLotteryMessage = await targetChannel.send(report);
-
-    } catch (error) {
-        console.error("❌ Lottery Update Error:", error);
-    }
+    } catch (error) { console.error(error); }
 }
 
 // --- ONLINE TACTICAL LIST --- ///
@@ -370,6 +350,17 @@ client.on('messageCreate', async message => {
     } catch (e) {
         message.reply("❌ Failed to reach TibiaData.");
     }
+            // Link an Alt to a Main (e.g., !linkalt PuffinAlt, PuffinMain)
+if (message.content.startsWith('!linkalt ')) {
+    const parts = message.content.replace('!linkalt ', '').split(',');
+    if (parts.length < 2) return message.reply("Format: `!linkalt AltName, MainName`");
+    
+    const alt = parts[0].trim();
+    const main = parts[1].trim();
+
+    db.prepare("UPDATE trackers SET main_char = ? WHERE LOWER(character_name) = LOWER(?)").run(main, alt);
+    message.reply(`✅ Linked **${alt}** to their main **${main}**. The Queen will now check **${main}** for lottery payments!`);
+}
 }
         // ... (Keep !open, !announce, !whitelist as they were)
     }
