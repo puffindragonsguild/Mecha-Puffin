@@ -44,7 +44,10 @@ async function postLotteryUpdate(targetChannel) {
     try {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
-        const rows = csvText.split('\n').map(row => row.split(','));
+        const rows = csvText.split('\n').map(line => {
+    const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+    return matches ? matches.map(val => val.replace(/"/g, '')) : [];
+});
 
         // 1. Get buyers who have at least 1 ticket (Col A = Name, Col B = Tickets)
         const buyers = rows.slice(1)
