@@ -67,9 +67,6 @@ db.prepare(`
         guild_name TEXT PRIMARY KEY,
         type TEXT -- 'FRIEND' or 'ENEMY'
     )
-try {
-    db.prepare("ALTER TABLE trackers ADD COLUMN main_char TEXT").run();
-} catch (err) {}
 `).run();
 
 module.exports = db;
