@@ -85,11 +85,13 @@ async function postLotteryUpdate(targetChannel) {
         const prize2 = getFullPrizeValue("2nd Prize");
         const prize3 = getFullPrizeValue("3rd Prize");
 
-        // 6. Cross-reference: Shame only those on the sheet who haven't paid
-        const unpaidNames = peopleOnSheet.filter(name => !buyers.includes(name));
-        
-        // Fetch Database Puffins for Discord ID pings
+        // 6. Cross-reference: Shame ONLY those on the sheet who are PUFFINs in our DB and haven't paid
         const puffinDB = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
+        const puffinNamesDB = puffinDB.map(p => p.character_name.toLowerCase());
+
+        const unpaidPuffins = peopleOnSheet.filter(name => 
+            puffinNamesDB.includes(name) && !buyers.includes(name)
+        );
 
         // 7. Build the Report
         let report = `## 🎲 Weekly Lottery Update\n\n`;
@@ -102,18 +104,19 @@ async function postLotteryUpdate(targetChannel) {
         report += `*Parcel gold to the Lottery Master in-game to join! Mandatory 1 ticket per Puffin.*\n\n`;
         report += `--- \n### ⚠️ THE SHAME LIST:\n`;
         
-        if (unpaidNames.length > 0) {
+        if (unpaidPuffins.length > 0) {
             report += `The following members are on the roster but have **not** paid for their mandatory ticket. **The Queen is displeased.**\n\n`;
             
-            const listItems = unpaidNames.map(name => {
+            const listItems = unpaidPuffins.map(name => {
                 const dbMatch = puffinDB.find(p => p.character_name.toLowerCase() === name);
-                const displayName = dbMatch && dbMatch.discord_user_id ? `<@${dbMatch.discord_user_id}>` : `**${name.charAt(0).toUpperCase() + name.slice(1)}**`;
+                // Since we filtered by puffinNamesDB, dbMatch will always exist here
+                const displayName = dbMatch.discord_user_id ? `<@${dbMatch.discord_user_id}>` : `**${name.charAt(0).toUpperCase() + name.slice(1)}**`;
                 return `• ${displayName}`;
             });
 
             report += listItems.join('\n');
         } else {
-            report += `✅ **The Queen is pleased.** All active lottery participants have fulfilled their duty.`;
+            report += `✅ **The Queen is pleased.** All active Puffins have fulfilled their duty.`;
         }
 
         // 8. Message Management
