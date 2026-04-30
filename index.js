@@ -48,25 +48,26 @@ async function postLotteryUpdate(targetChannel) {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
         
-        // 1. Split into rows, then clean quotes from each cell
+        // 1. Clean the CSV data
         const rows = csvText.split(/\r?\n/).map(line => 
             line.split(',').map(cell => cell.replace(/"/g, '').trim())
         );
 
-        // 2. Map Buyers (Column A & B)
-        // We look for rows where Col A has a name and Col B has a number > 0
+        // 2. Map Buyers from Column A & B (Index 0 and 1)
+        // We only count them as 'paid' if they are on the list with > 0 tickets
         const buyers = rows.slice(1)
             .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
             .map(r => r[0].toLowerCase());
 
-        // 3. Helper function to find the full number next to a label
-        // This handles numbers like 1,200,000 even if they are split across columns
+        // 3. Map Ticket Stats from D2 and D3 (Index 3 for Column D)
+        const ticketsSold = rows[1]?.[3] || "0";      // D2: Total tickets bought
+        const ticketsLeft = rows[2]?.[3] || "0";      // D3: Total tickets remaining
+
+        // 4. Helper for Prizes (Matches your working label logic)
         const getFullPrizeValue = (label) => {
             const row = rows.find(r => r.some(cell => cell.includes(label)));
             if (!row) return "0";
             const labelIndex = row.findIndex(cell => cell.includes(label));
-            
-            // Collect all subsequent pieces of the number if it was split by commas
             let valueParts = [];
             for (let i = labelIndex + 1; i < row.length; i++) {
                 if (row[i] === "" || isNaN(row[i].replace(/,/g, ''))) break;
@@ -78,24 +79,20 @@ async function postLotteryUpdate(targetChannel) {
         const prize1 = getFullPrizeValue("1st Prize");
         const prize2 = getFullPrizeValue("2nd Prize");
         const prize3 = getFullPrizeValue("3rd Prize");
-        const totalTickets = parseInt(getFullPrizeValue("Total Tickets").replace(/,/g, '')) || 100;
 
-        const ticketsSold = buyers.length;
-        const ticketsLeft = Math.max(0, totalTickets - ticketsSold);
-
-        // 4. Find Unpaid Puffins (Cross-reference with DB)
+        // 5. Cross-reference with Puffin Database
         const puffins = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
         const unpaid = puffins.filter(p => !buyers.includes(p.character_name.toLowerCase()));
 
-        // 5. Build Final Message
+        // 6. Build the Report
         let report = `## 🎲 Weekly Lottery Update\n\n`;
         report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
-        report += `🎟️ **Tickets left:** ${ticketsLeft}\n\n`;
+        report += `🎟️ **Tickets remaining:** ${ticketsLeft}\n\n`;
         report += `### 💰 Prize Pool Currently Stands At:\n`;
         report += `🥇 **1st** - ${prize1} gold\n`;
         report += `🥈 **2nd** - ${prize2} gold\n`;
         report += `🥉 **3rd** - ${prize3} gold\n\n`;
-        report += `*Parcel gold to the Lottery Master in-game to join!*\n\n`;
+        report += `*Parcel gold to the Lottery Master in-game to join! Mandatory 1 ticket per Puffin.*\n\n`;
         report += `--- \n### ⚠️ ATTENTION:\n`;
         
         if (unpaid.length > 0) {
