@@ -325,6 +325,12 @@ client.on('messageCreate', async message => {
             gatesOpen = false;
             message.reply('🛑 Gates closed.');
         }
+        if (message.content === '!listpuffins') {
+    const puffins = db.prepare("SELECT character_name FROM trackers WHERE tracker_type = 'PUFFIN'").all();
+    if (puffins.length === 0) return message.reply("The Royal Ledger is empty! Use `!trackme [Name]` to add Puffins.");
+    const names = puffins.map(p => p.character_name).join(', ');
+    message.reply(`🛡️ **Current Puffins on Watch:** ${names}`);
+}
         // ... (Keep !open, !announce, !whitelist as they were)
     }
 });
