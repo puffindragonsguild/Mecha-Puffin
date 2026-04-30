@@ -48,30 +48,37 @@ async function postLotteryUpdate(targetChannel) {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
         
-        // 1. Simple but effective split
-        const rows = csvText.split(/\r?\n/).map(line => line.split(','));
+        // 1. Split into rows, then clean quotes from each cell
+        const rows = csvText.split(/\r?\n/).map(line => 
+            line.split(',').map(cell => cell.replace(/"/g, '').trim())
+        );
 
         // 2. Map Buyers (Column A & B)
         // We look for rows where Col A has a name and Col B has a number > 0
         const buyers = rows.slice(1)
-            .filter(r => r[0] && r[1] && parseInt(r[1].replace(/"/g, '')) > 0)
-            .map(r => r[0].replace(/"/g, '').trim().toLowerCase());
+            .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
+            .map(r => r[0].toLowerCase());
 
-        // 3. Find Prizes by searching for the Labels
-        // This is safer than using hardcoded indices like [8]
-        const findValueByLabel = (label) => {
+        // 3. Helper function to find the full number next to a label
+        // This handles numbers like 1,200,000 even if they are split across columns
+        const getFullPrizeValue = (label) => {
             const row = rows.find(r => r.some(cell => cell.includes(label)));
             if (!row) return "0";
-            // The value is usually in the cell immediately following the label
             const labelIndex = row.findIndex(cell => cell.includes(label));
-            return row[labelIndex + 1] ? row[labelIndex + 1].replace(/"/g, '').trim() : "0";
+            
+            // Collect all subsequent pieces of the number if it was split by commas
+            let valueParts = [];
+            for (let i = labelIndex + 1; i < row.length; i++) {
+                if (row[i] === "" || isNaN(row[i].replace(/,/g, ''))) break;
+                valueParts.push(row[i]);
+            }
+            return valueParts.join(',') || "0";
         };
 
-        const prize1 = findValueByLabel("1st Prize");
-        const prize2 = findValueByLabel("2nd Prize");
-        const prize3 = findValueByLabel("3rd Prize");
-        const totalTicketsStr = findValueByLabel("Total Tickets");
-        const totalTickets = parseInt(totalTicketsStr) || 100;
+        const prize1 = getFullPrizeValue("1st Prize");
+        const prize2 = getFullPrizeValue("2nd Prize");
+        const prize3 = getFullPrizeValue("3rd Prize");
+        const totalTickets = parseInt(getFullPrizeValue("Total Tickets").replace(/,/g, '')) || 100;
 
         const ticketsSold = buyers.length;
         const ticketsLeft = Math.max(0, totalTickets - ticketsSold);
