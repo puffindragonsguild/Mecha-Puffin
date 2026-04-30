@@ -48,22 +48,27 @@ async function postLotteryUpdate(targetChannel) {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
         
-        // 1. Clean the CSV data
+        // 1. Clean the CSV data and split into rows
         const rows = csvText.split(/\r?\n/).map(line => 
             line.split(',').map(cell => cell.replace(/"/g, '').trim())
         );
 
-        // 2. Map Buyers from Column A & B (Index 0 and 1)
-        // We only count them as 'paid' if they are on the list with > 0 tickets
+        // 2. Map only the names present in Column A (the current roster)
+        const peopleOnSheet = rows.slice(1)
+            .map(r => r[0] ? r[0].toLowerCase() : null)
+            .filter(name => name !== null && name !== "");
+
+        // 3. Map Buyers from Column A & B (Index 0 and 1)
+        // A player is "paid" if their name is in Col A and Col B is > 0
         const buyers = rows.slice(1)
             .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
             .map(r => r[0].toLowerCase());
 
-        // 3. Map Ticket Stats from D2 and D3 (Index 3 for Column D)
+        // 4. Map Ticket Stats from D2 and D3 (Index 3 for Column D)
         const ticketsSold = rows[1]?.[3] || "0";      // D2: Total tickets bought
         const ticketsLeft = rows[2]?.[3] || "0";      // D3: Total tickets remaining
 
-        // 4. Helper for Prizes (Matches your working label logic)
+        // 5. Helper for Prizes (Label-search logic)
         const getFullPrizeValue = (label) => {
             const row = rows.find(r => r.some(cell => cell.includes(label)));
             if (!row) return "0";
@@ -80,11 +85,13 @@ async function postLotteryUpdate(targetChannel) {
         const prize2 = getFullPrizeValue("2nd Prize");
         const prize3 = getFullPrizeValue("3rd Prize");
 
-        // 5. Cross-reference with Puffin Database
-        const puffins = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
-        const unpaid = puffins.filter(p => !buyers.includes(p.character_name.toLowerCase()));
+        // 6. Cross-reference: Shame only those on the sheet who haven't paid
+        const unpaidNames = peopleOnSheet.filter(name => !buyers.includes(name));
+        
+        // Fetch Database Puffins for Discord ID pings
+        const puffinDB = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
 
-        // 6. Build the Report
+        // 7. Build the Report
         let report = `## 🎲 Weekly Lottery Update\n\n`;
         report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
         report += `🎟️ **Tickets remaining:** ${ticketsLeft}\n\n`;
@@ -93,15 +100,23 @@ async function postLotteryUpdate(targetChannel) {
         report += `🥈 **2nd** - ${prize2} gold\n`;
         report += `🥉 **3rd** - ${prize3} gold\n\n`;
         report += `*Parcel gold to the Lottery Master in-game to join! Mandatory 1 ticket per Puffin.*\n\n`;
-        report += `--- \n### ⚠️ ATTENTION:\n`;
+        report += `--- \n### ⚠️ THE SHAME LIST:\n`;
         
-        if (unpaid.length > 0) {
-            const pings = unpaid.map(m => m.discord_user_id ? `<@${m.discord_user_id}>` : `**${m.character_name}**`).join(' ');
-            report += `The following members are missing their mandatory ticket. **The Queen is displeased.**\n\n${pings}`;
+        if (unpaidNames.length > 0) {
+            report += `The following members are on the roster but have **not** paid for their mandatory ticket. **The Queen is displeased.**\n\n`;
+            
+            const listItems = unpaidNames.map(name => {
+                const dbMatch = puffinDB.find(p => p.character_name.toLowerCase() === name);
+                const displayName = dbMatch && dbMatch.discord_user_id ? `<@${dbMatch.discord_user_id}>` : `**${name.charAt(0).toUpperCase() + name.slice(1)}**`;
+                return `• ${displayName}`;
+            });
+
+            report += listItems.join('\n');
         } else {
-            report += `✅ **The Queen is pleased.** All Puffins have fulfilled their duty.`;
+            report += `✅ **The Queen is pleased.** All active lottery participants have fulfilled their duty.`;
         }
 
+        // 8. Message Management
         if (lastLotteryMessage) {
             try { await lastLotteryMessage.delete(); } catch (e) {}
         }
