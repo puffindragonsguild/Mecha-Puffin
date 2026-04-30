@@ -331,6 +331,28 @@ client.on('messageCreate', async message => {
     const names = puffins.map(p => p.character_name).join(', ');
     message.reply(`🛡️ **Current Puffins on Watch:** ${names}`);
 }
+        if (message.content.startsWith('!importguild ')) {
+    const guildName = message.content.replace('!importguild ', '').trim();
+    message.reply(`🏰 Fetching roster for **${guildName}**...`);
+
+    try {
+        const res = await fetch(`https://api.tibiadata.com/v4/guild/${encodeURIComponent(guildName)}`);
+        const data = await res.json();
+        const members = data.guild.members || [];
+
+        const insert = db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths) VALUES (?, ?, ?, ?, ?)');
+        
+        for (const m of members) {
+            // Add them as PUFFINs but turn off Level News by default (0,0) 
+            // until they use !trackme themselves
+            insert.run(m.name, 'PUFFIN', m.level, 0, 0);
+        }
+
+        message.reply(`✅ Imported **${members.length}** members from **${guildName}** into the Royal Ledger!`);
+    } catch (e) {
+        message.reply("❌ Failed to reach TibiaData.");
+    }
+}
         // ... (Keep !open, !announce, !whitelist as they were)
     }
 });
