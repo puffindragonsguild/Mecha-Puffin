@@ -17,7 +17,8 @@ const client = new Client({
 let gatesOpen = false;
 let hypeInterval;
 let lastRosterMessage = null; 
-let lastOnlineMessage = null; 
+let lastOnlineMessage = null;
+let lastLotteryMessage = null;
 
 client.once('ready', () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
@@ -25,6 +26,69 @@ client.once('ready', () => {
     setInterval(updateOnlineTracker, 5 * 60 * 1000); // 5 mins
     setInterval(runTracker, 10 * 60 * 1000);         // 10 mins
 });
+// --- LOTTERY UPDATE --- //
+
+async function runWeeklyLotteryUpdate() {
+    const now = new Date();
+    // Check if it's Monday (1) at 09:00 (Adjust day/time as you like)
+    if (now.getDay() === 1 && now.getHours() === 9) {
+        const channel = client.channels.cache.get(process.env.TRACKER_CHANNEL_ID); 
+        if (channel) postLotteryUpdate(channel);
+    }
+}
+
+// Separate the posting logic so you can call it via command OR via the timer
+async function postLotteryUpdate(targetChannel) {
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRzaQ7j81dpm9fhfmpjBiLAh6vBvJCuCYXqSsmAnPNEyRJZ-rS8k6-PVe4Mw2UNgwN-rgJSN9xjyHUH/pub?gid=0&single=true&output=csv';
+    
+    try {
+        const response = await fetch(csvUrl);
+        const csvText = await response.text();
+        const rows = csvText.split('\n').map(row => row.split(','));
+
+        // 1. Get buyers who have at least 1 ticket (Col A = Name, Col B = Tickets)
+        const buyers = rows.slice(1)
+            .filter(r => parseInt(r[1]) > 0) // Only count if Tickets > 0
+            .map(r => r[0]?.trim().toLowerCase());
+
+        const prize1 = rows[1][8];
+        const prize2 = rows[2][8];
+        const prize3 = rows[3][8];
+        const totalTickets = parseInt(rows[4][8]) || 100;
+
+        const ticketsSold = buyers.length;
+        const ticketsLeft = totalTickets - ticketsSold;
+
+        const puffins = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
+        const unpaid = puffins.filter(p => !buyers.includes(p.character_name.toLowerCase()));
+
+        let report = `## 🎲 Weekly Lottery Update\n\n`;
+        report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
+        report += `🎟️ **Tickets left:** ${ticketsLeft}\n\n`;
+        report += `### 💰 Prize Pool Currently Stands At:\n🥇 **1st** - ${prize1}\n🥈 **2nd** - ${prize2}\n🥉 **3rd** - ${prize3}\n\n`;
+        
+        if (unpaid.length > 0) {
+            const pings = unpaid.map(m => m.discord_user_id ? `<@${m.discord_user_id}>` : `**${m.character_name}**`).join(' ');
+            report += `⚠️ **DISAPPOINTING PUFFINS:**\n${pings}\n\n*The Queen expects your contribution immediately!*`;
+        } else {
+            report += `✅ **The Queen is pleased.** All Puffins are accounted for.`;
+        }
+
+        // 🗑️ Delete old message if it exists
+        if (lastLotteryMessage) {
+            try { await lastLotteryMessage.delete(); } catch (e) {}
+        }
+
+        lastLotteryMessage = await targetChannel.send(report);
+
+    } catch (error) {
+        console.error("Lottery Error:", error);
+    }
+}
+
+// Add this to your timers (checks every hour)
+setInterval(runWeeklyLotteryUpdate, 60 * 60 * 1000);
+
 
 // --- ONLINE TACTICAL LIST --- ///
 async function updateOnlineTracker() {
@@ -225,6 +289,9 @@ client.on('messageCreate', async message => {
             const g = message.content.replace('!untrackguild ', '').trim();
             db.prepare('DELETE FROM tracked_guilds WHERE LOWER(guild_name) = LOWER(?)').run(g);
             message.reply(`🗑️ Stopped tracking guild **${g}**.`);
+        }
+        if (message.content === '!lottery' && isAdmin) {
+        postLotteryUpdate(message.channel);
         }
 
         // Standard Admin Commands
