@@ -48,37 +48,39 @@ async function postLotteryUpdate(targetChannel) {
         const response = await fetch(csvUrl);
         const csvText = await response.text();
         
-        // Improved Regex for CSV parsing
-        const rows = csvText.split(/\r?\n/).filter(line => line.trim() !== "").map(line => {
-            const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-            return matches ? matches.map(val => val.replace(/"/g, '').trim()) : [];
-        });
+        // 1. Simple but effective split
+        const rows = csvText.split(/\r?\n/).map(line => line.split(','));
 
-        if (rows.length < 5) {
-            console.error("❌ CSV data is too short. Check your spreadsheet rows.");
-            return;
-        }
-
-        // 1. Buyers (Col A) and Tickets (Col B)
+        // 2. Map Buyers (Column A & B)
+        // We look for rows where Col A has a name and Col B has a number > 0
         const buyers = rows.slice(1)
-            .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
-            .map(r => r[0].toLowerCase());
+            .filter(r => r[0] && r[1] && parseInt(r[1].replace(/"/g, '')) > 0)
+            .map(r => r[0].replace(/"/g, '').trim().toLowerCase());
 
-        // 2. Map Prizes/Totals from Column I (Index 8)
-        // Adding safety checks so it doesn't crash if a row is missing
-        const prize1 = rows[1]?.[8] || "0";
-        const prize2 = rows[2]?.[8] || "0";
-        const prize3 = rows[3]?.[8] || "0";
-        const totalTickets = parseInt(rows[4]?.[8]) || 100;
+        // 3. Find Prizes by searching for the Labels
+        // This is safer than using hardcoded indices like [8]
+        const findValueByLabel = (label) => {
+            const row = rows.find(r => r.some(cell => cell.includes(label)));
+            if (!row) return "0";
+            // The value is usually in the cell immediately following the label
+            const labelIndex = row.findIndex(cell => cell.includes(label));
+            return row[labelIndex + 1] ? row[labelIndex + 1].replace(/"/g, '').trim() : "0";
+        };
+
+        const prize1 = findValueByLabel("1st Prize");
+        const prize2 = findValueByLabel("2nd Prize");
+        const prize3 = findValueByLabel("3rd Prize");
+        const totalTicketsStr = findValueByLabel("Total Tickets");
+        const totalTickets = parseInt(totalTicketsStr) || 100;
 
         const ticketsSold = buyers.length;
         const ticketsLeft = Math.max(0, totalTickets - ticketsSold);
 
-        // 3. Find Unpaid Puffins
+        // 4. Find Unpaid Puffins (Cross-reference with DB)
         const puffins = db.prepare("SELECT character_name, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
         const unpaid = puffins.filter(p => !buyers.includes(p.character_name.toLowerCase()));
 
-        // 4. Build Report
+        // 5. Build Final Message
         let report = `## 🎲 Weekly Lottery Update\n\n`;
         report += `🎟️ **Tickets sold:** ${ticketsSold}\n`;
         report += `🎟️ **Tickets left:** ${ticketsLeft}\n\n`;
@@ -91,16 +93,14 @@ async function postLotteryUpdate(targetChannel) {
         
         if (unpaid.length > 0) {
             const pings = unpaid.map(m => m.discord_user_id ? `<@${m.discord_user_id}>` : `**${m.character_name}**`).join(' ');
-            report += `Mandatory tickets missing! **The Queen is displeased.**\n\n${pings}`;
+            report += `The following members are missing their mandatory ticket. **The Queen is displeased.**\n\n${pings}`;
         } else {
             report += `✅ **The Queen is pleased.** All Puffins have fulfilled their duty.`;
         }
 
-        // 5. Delete and Repost
         if (lastLotteryMessage) {
-            try { await lastLotteryMessage.delete(); } catch (e) { console.log("Old lottery message already gone."); }
+            try { await lastLotteryMessage.delete(); } catch (e) {}
         }
-
         lastLotteryMessage = await targetChannel.send(report);
 
     } catch (error) {
