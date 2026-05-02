@@ -25,22 +25,21 @@ client.once('ready', () => {
 
     // Lottery Auto //
     async function runWeeklyLotteryUpdate() {
-    const now = new Date();
-    // getDay() 1 = Monday. getHours() 10 = 10 AM.
-    if (now.getDay() === 1 && now.getHours() === 10) {
-        const channel = client.channels.cache.get(trackerChannelId); 
-        if (channel) postLotteryUpdate(channel);
+        const now = new Date();
+        // getDay() 1 = Monday. getHours() 10 = 10 AM.
+        if (now.getDay() === 1 && now.getHours() === 10) {
+            const channel = client.channels.cache.get(trackerChannelId); 
+            if (channel) postLotteryUpdate(channel);
+        }
     }
-}
     
     // Start tracking loops
     setInterval(updateOnlineTracker, 5 * 60 * 1000); // 5 mins
     setInterval(runTracker, 10 * 60 * 1000);         // 10 mins
     setInterval(runWeeklyLotteryUpdate, 60 * 60 * 1000);
-    
 });
-// --- LOTTERY UPDATE --- //
 
+// --- LOTTERY UPDATE --- //
 async function postLotteryUpdate(targetChannel) {
     const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRzaQ7j81dpm9fhfmpjBiLAh6vBvJCuCYXqSsmAnPNEyRJZ-rS8k6-PVe4Mw2UNgwN-rgJSN9xjyHUH/pub?gid=0&single=true&output=csv';
     
@@ -49,64 +48,66 @@ async function postLotteryUpdate(targetChannel) {
         const csvText = await response.text();
         const rows = csvText.split(/\r?\n/).map(line => line.split(',').map(cell => cell.replace(/"/g, '').trim()));
 
-        // 1. Get Buyers (those with > 0 tickets)
         const buyers = rows.slice(1)
             .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
             .map(r => r[0].toLowerCase());
 
-        // 2. Get All Puffins from DB
-        const allPuffins = db.prepare("SELECT character_name, main_char, discord_user_id FROM trackers WHERE tracker_type = 'PUFFIN'").all();
+        const csvRoster = rows.slice(1)
+            .map(r => r[0] ? r[0].trim() : "")
+            .filter(name => name !== "");
 
-        // 3. Logic: Who hasn't paid?
-        const unpaidPuffins = allPuffins.filter(p => {
-            const myName = p.character_name.toLowerCase();
-            const myMain = p.main_char ? p.main_char.toLowerCase() : myName;
-            
-            // A Puffin is only "Unpaid" if neither their Name nor their Main is in the buyers list
-            return !buyers.includes(myName) && !buyers.includes(myMain);
+        const dbPuffins = db.prepare("SELECT character_name, main_char, discord_user_id FROM trackers").all();
+
+        const shameList = [];
+        const seenMains = new Set();
+
+        csvRoster.forEach(name => {
+            const lowerName = name.toLowerCase();
+            if (!buyers.includes(lowerName)) {
+                const dbEntry = dbPuffins.find(p => p.character_name.toLowerCase() === lowerName);
+                const displayName = (dbEntry && dbEntry.main_char) ? dbEntry.main_char : name;
+                
+                if (!seenMains.has(displayName.toLowerCase())) {
+                    shameList.push({ 
+                        display: displayName, 
+                        ping: dbEntry ? dbEntry.discord_user_id : null 
+                    });
+                    seenMains.add(displayName.toLowerCase());
+                }
+            }
         });
 
-        // 4. Build Report (Stats & Prizes)
-        const ticketsSold = rows[1]?.[3] || "0";
-        const ticketsLeft = rows[2]?.[3] || "0";
         const getVal = (lbl) => {
             const r = rows.find(row => row.some(c => c.includes(lbl)));
             if (!r) return "0";
             const idx = r.findIndex(c => c.includes(lbl));
             let parts = [];
             for (let i = idx + 1; i < r.length; i++) {
-                if (r[i] === "" || isNaN(r[i].replace(/,/g, ''))) break;
+                if (!r[i] || r[i] === "" || isNaN(r[i].replace(/,/g, ''))) break;
                 parts.push(r[i]);
             }
             return parts.join(',') || "0";
         };
 
-        let report = `## 🎲 Weekly Lottery Update\n\n🎟️ **Sold:** ${ticketsSold} | 🎟️ **Left:** ${ticketsLeft}\n\n`;
+        const sold = rows[1]?.[3] || "0";
+        const left = rows[2]?.[3] || "0";
+
+        let report = `## 🎲 Weekly Lottery Update\n\n🎟️ **Sold:** ${sold} | 🎟️ **Left:** ${left}\n\n`;
         report += `🥇 **1st:** ${getVal("1st Prize")} | 🥈 **2nd:** ${getVal("2nd Prize")} | 🥉 **3rd:** ${getVal("3rd Prize")}\n\n`;
         report += `--- \n### ⚠️ THE SHAME LIST:\n`;
         
-        if (unpaidPuffins.length > 0) {
-            // Group by Discord ID to avoid pinging the same person multiple times for alts
-            const uniqueUnpaid = [];
-            const seenUsers = new Set();
-
-            unpaidPuffins.forEach(p => {
-                if (!p.discord_user_id || !seenUsers.has(p.discord_user_id)) {
-                    uniqueUnpaid.push(p);
-                    if (p.discord_user_id) seenUsers.add(p.discord_user_id);
-                }
-            });
-
-            report += uniqueUnpaid.map(p => {
-                const display = p.discord_user_id ? `<@${p.discord_user_id}>` : `**${p.character_name}**`;
-                return `• ${display}`;
+        if (shameList.length > 0) {
+            report += shameList.map(p => {
+                const text = p.ping ? `<@${p.ping}>` : `**${p.display}**`;
+                return `• ${text}`;
             }).join('\n');
         } else {
-            report += `✅ **The Queen is pleased.** All Puffins have fulfilled their duty.`;
+            report += `✅ **The Queen is pleased.** All active lottery participants have fulfilled their duty.`;
         }
 
         if (lastLotteryMessage) try { await lastLotteryMessage.delete(); } catch (e) {}
         lastLotteryMessage = await targetChannel.send(report);
+
     } catch (error) { console.error(error); }
 }
 
@@ -217,93 +218,6 @@ function getPuffinTrackerMessage(type, name, level, vocation, reason = "") {
     return messages.getRandom(list).replace('{name}', `**${name}**`).replace('{level}', level).replace('{reason}', reason);
 }
 
-// --- RAID UTILS --- //
-function getNextWednesday() {
-    const today = new Date();
-    const nextWed = new Date();
-    const daysUntilWed = (3 - today.getDay() + 7) % 7 || 7;
-    nextWed.setDate(today.getDate() + daysUntilWed);
-    return nextWed.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
-}
-
-async function postLotteryUpdate(targetChannel) {
-    const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRzaQ7j81dpm9fhfmpjBiLAh6vBvJCuCYXqSsmAnPNEyRJZ-rS8k6-PVe4Mw2UNgwN-rgJSN9xjyHUH/pub?gid=0&single=true&output=csv';
-    
-    try {
-        const response = await fetch(csvUrl);
-        const csvText = await response.text();
-        const rows = csvText.split(/\r?\n/).map(line => line.split(',').map(cell => cell.replace(/"/g, '').trim()));
-
-        // 1. Get Buyers (those who paid)
-        const buyers = rows.slice(1)
-            .filter(r => r[0] && r[1] && parseInt(r[1]) > 0)
-            .map(r => r[0].toLowerCase());
-
-        // 2. Get the full roster from Column A of the CSV
-        const csvRoster = rows.slice(1)
-            .map(r => r[0] ? r[0].trim() : "")
-            .filter(name => name !== "");
-
-        // 3. Fetch link data from DB
-        const dbPuffins = db.prepare("SELECT character_name, main_char, discord_user_id FROM trackers").all();
-
-        // 4. Calculate Shame List based on CSV Roster
-        const shameList = [];
-        const seenMains = new Set(); // To avoid double-shaming if main and alt both haven't paid
-
-        csvRoster.forEach(name => {
-            const lowerName = name.toLowerCase();
-            if (!buyers.includes(lowerName)) {
-                // Check if this character is an alt
-                const dbEntry = dbPuffins.find(p => p.character_name.toLowerCase() === lowerName);
-                const displayName = (dbEntry && dbEntry.main_char) ? dbEntry.main_char : name;
-                
-                if (!seenMains.has(displayName.toLowerCase())) {
-                    shameList.push({ 
-                        display: displayName, 
-                        ping: dbEntry ? dbEntry.discord_user_id : null 
-                    });
-                    seenMains.add(displayName.toLowerCase());
-                }
-            }
-        });
-
-        // 5. Helper for Prizes & Stats
-        const getVal = (lbl) => {
-            const r = rows.find(row => row.some(c => c.includes(lbl)));
-            if (!r) return "0";
-            const idx = r.findIndex(c => c.includes(lbl));
-            let parts = [];
-            for (let i = idx + 1; i < r.length; i++) {
-                if (!r[i] || r[i] === "" || isNaN(r[i].replace(/,/g, ''))) break;
-                parts.push(r[i]);
-            }
-            return parts.join(',') || "0";
-        };
-
-        const sold = rows[1]?.[3] || "0";
-        const left = rows[2]?.[3] || "0";
-
-        // 6. Build Report
-        let report = `## 🎲 Weekly Lottery Update\n\n🎟️ **Sold:** ${sold} | 🎟️ **Left:** ${left}\n\n`;
-        report += `🥇 **1st:** ${getVal("1st Prize")} | 🥈 **2nd:** ${getVal("2nd Prize")} | 🥉 **3rd:** ${getVal("3rd Prize")}\n\n`;
-        report += `--- \n### ⚠️ THE SHAME LIST:\n`;
-        
-        if (shameList.length > 0) {
-            report += shameList.map(p => {
-                const text = p.ping ? `<@${p.ping}>` : `**${p.display}**`;
-                return `• ${text}`;
-            }).join('\n');
-        } else {
-            report += `✅ **The Queen is pleased.** All active lottery participants have fulfilled their duty.`;
-        }
-
-        if (lastLotteryMessage) try { await lastLotteryMessage.delete(); } catch (e) {}
-        lastLotteryMessage = await targetChannel.send(report);
-
-    } catch (error) { console.error(error); }
-}
-
 // --- COMMANDS --- //
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
@@ -313,106 +227,106 @@ client.on('messageCreate', async message => {
     if (message.content === '!roster') displayRoster(message.channel);
 
     if (isAdmin) {
-        // Tracker Management
+        if (message.content.startsWith('!open')) {
+            gatesOpen = true;
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('signup_start').setLabel('Sign Up for Raid').setStyle(ButtonStyle.Primary)
+            );
+            await message.channel.send({ content: `## ⚔️ SIGN-UPS OPEN: ${getNextWednesday()} ⚔️\nClick below to register for the next royal raid!`, components: [row] });
+
+            // Adjusted reminder to 48 hours (48 * 60 * 60 * 1000)
+            if (hypeInterval) clearInterval(hypeInterval);
+            hypeInterval = setInterval(() => {
+                if (gatesOpen) message.channel.send(messages.getRandom(messages.hypeQuotes));
+            }, 48 * 60 * 60 * 1000);
+        }
+
+        if (message.content === '!lottery') postLotteryUpdate(message.channel);
+
+        if (message.content.startsWith('!linkalt ')) {
+            const parts = message.content.replace('!linkalt ', '').split(',');
+            if (parts.length < 2) return message.reply("Format: `!linkalt AltName, MainName`");
+            const alt = parts[0].trim();
+            const main = parts[1].trim();
+            db.prepare(`
+                INSERT INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths, main_char)
+                VALUES (?, 'PUFFIN', 0, 0, 0, ?)
+                ON CONFLICT(character_name) DO UPDATE SET main_char = EXCLUDED.main_char
+            `).run(alt, main);
+            message.reply(`✅ **${alt}** linked to **${main}**.`);
+        }
+
+        // Other tracker commands (trackme, trackfriend, trackenemy, etc.)
         if (message.content.startsWith('!trackme ')) {
             const name = message.content.replace('!trackme ', '').trim();
             db.prepare('INSERT OR REPLACE INTO trackers (character_name, last_level, tracker_type, track_levels, track_deaths) VALUES (?, ?, ?, 1, 1)').run(name, 0, 'PUFFIN');
-            message.reply(`✅ **${name}** added to Puffin news.`);
+            message.reply(`✅ **${name}** added to news.`);
         }
-        if (message.content.startsWith('!trackfriend ')) {
-            const name = message.content.replace('!trackfriend ', '').trim();
-            db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths) VALUES (?, ?, 0, 0, 0)').run(name, 'FRIEND');
-            message.reply(`🤝 **${name}** added to Friends list.`);
-        }
-        if (message.content.startsWith('!trackenemy ')) {
-            const name = message.content.replace('!trackenemy ', '').trim();
-            db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths) VALUES (?, ?, 0, 0, 0)').run(name, 'ENEMY');
-            message.reply(`🎯 **${name}** added to Enemy Watch.`);
-        }
-        if (message.content.startsWith('!untrack ')) {
-            const name = message.content.replace('!untrack ', '').trim();
-            db.prepare('DELETE FROM trackers WHERE LOWER(character_name) = LOWER(?)').run(name);
-            message.reply(`🗑️ Untracked **${name}**.`);
-        }
-        if (message.content.startsWith('!trackfriendguild ')) {
-            const g = message.content.replace('!trackfriendguild ', '').trim();
-            db.prepare('INSERT OR REPLACE INTO tracked_guilds (guild_name, type) VALUES (?, ?)').run(g, 'FRIEND');
-            message.reply(`🤝 Tracking guild **${g}** as friends.`);
-        }
-        if (message.content.startsWith('!trackenemyguild ')) {
-            const g = message.content.replace('!trackenemyguild ', '').trim();
-            db.prepare('INSERT OR REPLACE INTO tracked_guilds (guild_name, type) VALUES (?, ?)').run(g, 'ENEMY');
-            message.reply(`💀 Tracking guild **${g}** as enemies.`);
-        }
-        if (message.content.startsWith('!untrackguild ')) {
-            const g = message.content.replace('!untrackguild ', '').trim();
-            db.prepare('DELETE FROM tracked_guilds WHERE LOWER(guild_name) = LOWER(?)').run(g);
-            message.reply(`🗑️ Stopped tracking guild **${g}**.`);
-        }
-        if (message.content === '!lottery' && isAdmin) {
-        postLotteryUpdate(message.channel);
-        }
-
-        // Standard Admin Commands
-        if (message.content === '!clear') {
-            db.prepare('DELETE FROM signups').run();
-            message.reply('🧹 Roster wiped.');
-        }
-        if (message.content === '!close') {
-            gatesOpen = false;
-            message.reply('🛑 Gates closed.');
-        }
-        if (message.content === '!listpuffins') {
-    const puffins = db.prepare("SELECT character_name FROM trackers WHERE tracker_type = 'PUFFIN'").all();
-    if (puffins.length === 0) return message.reply("The Royal Ledger is empty! Use `!trackme [Name]` to add Puffins.");
-    const names = puffins.map(p => p.character_name).join(', ');
-    message.reply(`🛡️ **Current Puffins on Watch:** ${names}`);
-}
-        if (message.content.startsWith('!importguild ')) {
-    const guildName = message.content.replace('!importguild ', '').trim();
-    message.reply(`🏰 Fetching roster for **${guildName}**...`);
-
-    try {
-        const res = await fetch(`https://api.tibiadata.com/v4/guild/${encodeURIComponent(guildName)}`);
-        const data = await res.json();
-        const members = data.guild.members || [];
-
-        const insert = db.prepare('INSERT OR REPLACE INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths) VALUES (?, ?, ?, ?, ?)');
-        
-        for (const m of members) {
-            // Add them as PUFFINs but turn off Level News by default (0,0) 
-            // until they use !trackme themselves
-            insert.run(m.name, 'PUFFIN', m.level, 0, 0);
-        }
-
-        message.reply(`✅ Imported **${members.length}** members from **${guildName}** into the Royal Ledger!`);
-    } catch (e) {
-        message.reply("❌ Failed to reach TibiaData.");
-    }
-// Fixed !linkalt Command
-// Use: !linkalt PuffinAlt, PuffinMain
-if (message.content.startsWith('!linkalt ')) {
-    const parts = message.content.replace('!linkalt ', '').split(',');
-    if (parts.length < 2) return message.reply("Format: `!linkalt AltName, MainName`");
-    
-    const alt = parts[0].trim();
-    const main = parts[1].trim();
-
-    db.prepare(`
-        INSERT INTO trackers (character_name, tracker_type, last_level, track_levels, track_deaths, main_char)
-        VALUES (?, 'PUFFIN', 0, 0, 0, ?)
-        ON CONFLICT(character_name) DO UPDATE SET main_char = EXCLUDED.main_char
-    `).run(alt, main);
-    
-    message.reply(`✅ **${alt}** is now linked to **${main}**. If **${alt}** hasn't paid, the Queen will now shame **${main}** instead!`);
-}
-}
-        // ... (Keep !open, !announce, !whitelist as they were)
+        if (message.content === '!clear') { db.prepare('DELETE FROM signups').run(); message.reply('🧹 Wiped.'); }
+        if (message.content === '!close') { gatesOpen = false; if (hypeInterval) clearInterval(hypeInterval); message.reply('🛑 Closed.'); }
     }
 });
 
 client.on('interactionCreate', async interaction => {
-    // ... (Keep your interaction logic for buttons/modals/selects as they were)
+    if (interaction.isButton() && interaction.customId === 'signup_start') {
+        const modal = new ModalBuilder().setCustomId('signup_modal').setTitle('Puffin Raid Registration');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('char_name').setLabel('Character Name').setStyle(TextInputStyle.Short).setRequired(true)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('char_level').setLabel('Level').setStyle(TextInputStyle.Short).setRequired(true)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('message').setLabel('Message to the Queen').setStyle(TextInputStyle.Paragraph).setRequired(false))
+        );
+        await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'signup_modal') {
+        const charName = interaction.fields.getTextInputValue('char_name');
+        const level = interaction.fields.getTextInputValue('char_level');
+        const note = interaction.fields.getTextInputValue('message');
+
+        const row = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder().setCustomId('voc_select').setPlaceholder('Select your vocation...')
+                .addComponents(
+                    { label: 'Elite Knight', value: 'EK' },
+                    { label: 'Elder Druid', value: 'ED' },
+                    { label: 'Master Sorcerer', value: 'MS' },
+                    { label: 'Royal Paladin', value: 'RP' }
+                )
+        );
+
+        // Store temporary data in DB first as 'pending'
+        db.prepare('INSERT INTO signups (discord_user_id, character_name, level, message_to_queen, status) VALUES (?, ?, ?, ?, ?)')
+          .run(interaction.user.id, charName, level, note, 'PENDING_VOC');
+
+        await interaction.reply({ content: `Great! Now select your vocation for **${charName}**:`, components: [row], flags: MessageFlags.Ephemeral });
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'voc_select') {
+        const voc = interaction.values[0];
+        db.prepare('UPDATE signups SET vocation = ?, status = "COMPLETE" WHERE discord_user_id = ? AND status = "PENDING_VOC"')
+          .run(voc, interaction.user.id);
+
+        await interaction.update({ content: `✅ Registration complete! Your loyalty has been noted.`, components: [], flags: MessageFlags.Ephemeral });
+        // NOTE: Roster update removed from here to prevent automatic posting after every signup.
+    }
 });
+
+async function displayRoster(channel) {
+    const attendees = db.prepare('SELECT * FROM signups WHERE status = "COMPLETE"').all();
+    let rosterMsg = `## 🏰 Current Royal Raid Roster\n`;
+    if (attendees.length === 0) rosterMsg += "*The hall is currently empty...*";
+    else {
+        attendees.forEach(a => { rosterMsg += `• **${a.character_name}** (${a.vocation} ${a.level}) - "${a.message_to_queen || 'Hail!'}"\n`; });
+    }
+    if (lastRosterMessage) try { await lastRosterMessage.delete(); } catch (e) {}
+    lastRosterMessage = await channel.send(rosterMsg);
+}
+
+function getNextWednesday() {
+    const today = new Date();
+    const nextWed = new Date();
+    const daysUntilWed = (3 - today.getDay() + 7) % 7 || 7;
+    nextWed.setDate(today.getDate() + daysUntilWed);
+    return nextWed.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+}
 
 client.login(process.env.DISCORD_TOKEN);
