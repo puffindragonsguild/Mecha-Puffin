@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 
-const WORLD_NAME = "Antica"; // 👈 CHANGE THIS TO YOUR TIBIA WORLD!
+const WORLD_NAME = "Peloria"; // 👈 CHANGE THIS TO YOUR TIBIA WORLD!
 const CORE_GUILDS = ["Puffin Dragons", "Slightly Smaller Dragons", "Noobemon"];
 
 let radarInterval = null;
