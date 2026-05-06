@@ -48,7 +48,7 @@ async function buildRadarEmbed(db) {
 
             let text = `**${guildName}:**\n`;
             onlineMembers.forEach(m => {
-                text += `• ${formatVoc(m.vocation)} ${m.name} (${m.level})\n`;
+                text += `${formatVoc(m.vocation)} ${m.name} (${m.level})\n`;
             });
             return text + '\n';
         };
@@ -62,7 +62,7 @@ async function buildRadarEmbed(db) {
         // 2. Puffin Alts
         const onlineAlts = onlineWorldPlayers.filter(p => dbAlts.includes(p.name.toLowerCase()));
         if (onlineAlts.length > 0) {
-            output.push(`**Puffin Alts:**\n` + onlineAlts.map(p => `• ${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+            output.push(`**Puffin Alts:**\n` + onlineAlts.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
         }
 
         // 3. Friendly Guilds
@@ -75,7 +75,7 @@ async function buildRadarEmbed(db) {
         // 4. Friends
         const onlineFriends = onlineWorldPlayers.filter(p => dbFriends.includes(p.name.toLowerCase()));
         if (onlineFriends.length > 0) {
-            output.push(`**Friends:**\n` + onlineFriends.map(p => `• ${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+            output.push(`**Friends:**\n` + onlineFriends.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
         }
 
         // 5. Naughty Guilds
@@ -88,7 +88,7 @@ async function buildRadarEmbed(db) {
         // 6. Naughty Characters
         const onlineNaughty = onlineWorldPlayers.filter(p => dbNaughty.includes(p.name.toLowerCase()));
         if (onlineNaughty.length > 0) {
-            output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `• ${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+            output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
         }
 
         const description = output.length > 0 ? output.join('').substring(0, 4096) : "💨 **The lands are quiet.** No tracked targets are online.";
