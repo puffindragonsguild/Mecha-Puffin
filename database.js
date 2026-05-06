@@ -47,4 +47,22 @@ db.prepare(`
 
 console.log("💾 Whitelist Memory Banks: ONLINE");
 
+// Create the Tracked Guilds table
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS tracked_guilds (
+        guild_name TEXT PRIMARY KEY,
+        type TEXT
+    )
+`).run();
+
+// Create the Tracked Characters table (For Alts, Friends, and Naughty lists)
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS tracked_chars (
+        char_name TEXT PRIMARY KEY,
+        type TEXT
+    )
+`).run();
+
+console.log("💾 Radar Memory Banks: ONLINE");
+
 module.exports = db;
