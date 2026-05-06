@@ -8,7 +8,6 @@ if (!fs.existsSync('./data')) {
 
 const db = new Database('./data/puffin.db');
 
-// Main Signups Table
 db.prepare(`
     CREATE TABLE IF NOT EXISTS signups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,41 +20,31 @@ db.prepare(`
     )
 `).run();
 
-// Trackers Table (for Levels, Deaths, and Lottery)
+// Safely try to add the new column if it doesn't already exist
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN message_to_queen TEXT').run();
+    console.log("💾 Database upgraded: Added 'message_to_queen' column.");
+} catch (err) {
+    // If it throws an error, it just means the column already exists! 
+}
+// Safely try to add the level column if it doesn't already exist
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN level INTEGER').run();
+    console.log("💾 Database upgraded: Added 'level' column.");
+} catch (err) {}
+try {
+    db.prepare('ALTER TABLE signups ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP').run();
+} catch (err) {}
+
+console.log("💾 Mecha-Puffin Memory Banks: ONLINE");
+
+// Create the Whitelist table
 db.prepare(`
-    CREATE TABLE IF NOT EXISTS trackers (
-        character_name TEXT PRIMARY KEY,
-        discord_user_id TEXT,
-        last_level INTEGER DEFAULT 0,
-        track_levels INTEGER DEFAULT 1,
-        track_deaths INTEGER DEFAULT 1,
-        tracker_type TEXT DEFAULT 'PUFFIN',
-        main_char TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    CREATE TABLE IF NOT EXISTS whitelist (
+        char_name TEXT PRIMARY KEY
     )
 `).run();
 
-// SAFE UPGRADES: These only run if the columns don't exist
-const upgrades = [
-    { table: 'signups', col: 'message_to_queen', type: 'TEXT' },
-    { table: 'signups', col: 'level', type: 'INTEGER' },
-    { table: 'signups', col: 'created_at', type: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
-    { table: 'trackers', col: 'tracker_type', type: "TEXT DEFAULT 'PUFFIN'" },
-    { table: 'trackers', col: 'main_char', type: 'TEXT' } // ✅ For the Lottery link
-];
-
-upgrades.forEach(u => {
-    try {
-        db.prepare(`ALTER TABLE ${u.table} ADD COLUMN ${u.col} ${u.type}`).run();
-    } catch (e) {
-        // Silently skip if column already exists
-    }
-});
-
-// Whitelist & Guilds
-db.prepare(`CREATE TABLE IF NOT EXISTS whitelist (char_name TEXT PRIMARY KEY)`).run();
-db.prepare(`CREATE TABLE IF NOT EXISTS tracked_guilds (guild_name TEXT PRIMARY KEY, type TEXT)`).run();
-
-console.log("💾 Mecha-Puffin Memory Banks: ONLINE & UP TO DATE");
+console.log("💾 Whitelist Memory Banks: ONLINE");
 
 module.exports = db;
