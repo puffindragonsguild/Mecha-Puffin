@@ -8,11 +8,11 @@ let lastRadarMessage = null;
 
 const formatVoc = (voc) => {
     const v = voc.toLowerCase();
-    if (v.includes('knight')) return '🛡️ EK';
-    if (v.includes('druid')) return '❄️ ED';
-    if (v.includes('sorcerer')) return '🔥 MS';
-    if (v.includes('paladin')) return '🏹 RP';
-    if (v.includes('monk')) return '🧘‍♂️ EM';
+    if (v.includes('knight')) return '🛡️';
+    if (v.includes('druid')) return '❄️';
+    if (v.includes('sorcerer')) return '🔥';
+    if (v.includes('paladin')) return '🏹';
+    if (v.includes('monk')) return '🧘‍♂️';
     return '❓ None';
 };
 
