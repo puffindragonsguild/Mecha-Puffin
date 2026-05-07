@@ -58,7 +58,10 @@ client.once('clientReady', async () => {
                 console.log('🔄 Auto-resuming Lottery Loop...');
                 lotteryManager.startLotteryLoop(channel, db, true);
             }
-            // (You can easily add your RAID signups recovery here in the future!)
+            else if (task.task_name === 'RAID_HYPE') {
+                console.log(`🔄 Auto-resuming Raid Gates for ${task.extra_data}...`);
+                raidManager.startHypeLoop(channel, task.extra_data, db, true);
+            }
             
         } catch (err) {
             console.error(`⚠️ Failed to resume ${task.task_name}:`, err);
