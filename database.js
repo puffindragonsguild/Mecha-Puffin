@@ -77,5 +77,13 @@ db.prepare(`
 
 console.log("💾 Tracker Memory Banks: ONLINE");
 
+// Safely upgrade trackers table for the Lottery Deactivation feature
+try {
+    db.prepare('ALTER TABLE trackers ADD COLUMN is_active INTEGER DEFAULT 1').run();
+    console.log("💾 Database upgraded: Added 'is_active' column to trackers.");
+} catch (err) {
+    // Silently skip if column already exists
+}
+
 
 module.exports = db;
