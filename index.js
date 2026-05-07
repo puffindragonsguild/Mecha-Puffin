@@ -55,7 +55,7 @@ client.once('clientReady', async () => {
 
             if (task.task_name === 'RADAR') {
                 console.log('🔄 Auto-resuming Live Radar...');
-                radarManager.startRadar(channel, db, true);
+                radarManager.startRadar(channel, db, true, task.extra_data);
             } 
             else if (task.task_name === 'LOTTERY') {
                 console.log('🔄 Auto-resuming Lottery Loop...');
