@@ -53,10 +53,14 @@ client.once('clientReady', async () => {
             const channel = await client.channels.fetch(task.channel_id);
             if (!channel) continue;
 
-            if (task.task_name === 'RADAR') {
-                console.log('🔄 Auto-resuming Live Radar...');
-                radarManager.startRadar(channel, db, true, task.extra_data);
-            } 
+            if (task.task_name === 'RADAR_FRIENDLY') {
+                console.log('🔄 Auto-resuming Friendly Radar...');
+                radarManager.startRadar(channel, db, 'FRIENDLY', true, task.extra_data);
+            }
+            else if (task.task_name === 'RADAR_NAUGHTY') {
+                console.log('🔄 Auto-resuming Naughty Radar...');
+                radarManager.startRadar(channel, db, 'NAUGHTY', true, task.extra_data);
+            }
             else if (task.task_name === 'LOTTERY') {
                 console.log('🔄 Auto-resuming Lottery Loop...');
                 lotteryManager.startLotteryLoop(channel, db, true);
