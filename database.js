@@ -65,4 +65,17 @@ db.prepare(`
 
 console.log("💾 Radar Memory Banks: ONLINE");
 
+// Create the Trackers table (Links Characters to Discord Users)
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS trackers (
+        character_name TEXT PRIMARY KEY,
+        discord_user_id TEXT,
+        main_char TEXT,
+        tracker_type TEXT DEFAULT 'PUFFIN'
+    )
+`).run();
+
+console.log("💾 Tracker Memory Banks: ONLINE");
+
+
 module.exports = db;
