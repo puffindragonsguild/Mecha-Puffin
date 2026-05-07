@@ -28,6 +28,7 @@ async function buildRadarData(db, type) {
         let charsToTrack = {};
         let totalOnline = 0;
         let output = [];
+        let currentNaughtyNames = [];
 
         // 1. Filter out what to fetch based on radar type
         if (type === 'FRIENDLY') {
@@ -94,15 +95,24 @@ async function buildRadarData(db, type) {
             }
         } else if (type === 'NAUGHTY') {
             guildsToFetch.forEach((guildName, index) => {
-                const guildText = processGuild(guildName, guildResults[index]);
+                const apiData = guildResults[index];
+                if (apiData?.guild?.members) {
+                    const onlineMembers = apiData.guild.members.filter(m => m.status === 'online');
+                    onlineMembers.forEach(m => currentNaughtyNames.push(m.name));
+                }
+                const guildText = processGuild(guildName, apiData);
                 if (guildText) output.push(`⚔️ ` + guildText);
             });
 
             const onlineNaughty = onlineWorldPlayers.filter(p => charsToTrack.naughty.includes(p.name.toLowerCase()));
             if (onlineNaughty.length > 0) {
                 totalOnline += onlineNaughty.length;
+                onlineNaughty.forEach(p => currentNaughtyNames.push(p.name));
                 output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
             }
+            
+            // Remove duplicates in case someone is in a naughty guild AND tracked individually
+            currentNaughtyNames = [...new Set(currentNaughtyNames)];
         }
 
         const title = type === 'FRIENDLY' ? `🌍 Puffins & Friends Radar` : `☠️ Naughty Radar`;
@@ -116,17 +126,17 @@ async function buildRadarData(db, type) {
             .setFooter({ text: "Auto-updates every 5 minutes" })
             .setTimestamp();
 
-        return { embed, totalOnline };
+        return { embed, totalOnline, currentNaughtyNames };
 
     } catch (error) {
         console.error(`Radar Fetch Error (${type}):`, error);
         const embed = new EmbedBuilder().setTitle(`🌍 ${type} Radar`).setColor(0xff0000).setDescription("⚠️ **API Error:** The Queen's scouts were ambushed! Retrying in 5 minutes...");
-        return { embed, totalOnline: -1 };
+        return { embed, totalOnline: -1, currentNaughtyNames: null };
     }
 }
 
 async function updateRadarMessage(channel, db, type) {
-    const { embed, totalOnline } = await buildRadarData(db, type);
+    const { embed, totalOnline, currentNaughtyNames } = await buildRadarData(db, type);
     const taskName = type === 'FRIENDLY' ? 'RADAR_FRIENDLY' : 'RADAR_NAUGHTY';
 
     // 1. Message Editing Logic
@@ -154,6 +164,33 @@ async function updateRadarMessage(channel, db, type) {
         } catch (e) {
             console.error(`Could not rename channel ${channel.id}. Check bot permissions (Manage Channels).`);
         }
+    }
+
+    // 3. Naughty DM Alert Logic
+    if (type === 'NAUGHTY' && currentNaughtyNames) {
+        // We check if previous is NOT null so we don't spam everyone the second the bot turns on
+        if (previousNaughtyOnline !== null) {
+            // Find enemies that are online NOW, but were NOT online 5 minutes ago
+            const newlyOnline = currentNaughtyNames.filter(name => !previousNaughtyOnline.includes(name));
+            
+            if (newlyOnline.length > 0) {
+                const subscribers = db.prepare('SELECT discord_user_id FROM alert_subscribers').all();
+                if (subscribers.length > 0) {
+                    const alertMsg = `🚨 **NAUGHTY ALERT** 🚨\nThe Queen's scouts spotted the following enemies logging in:\n• ${newlyOnline.join('\n• ')}`;
+                    
+                    for (const sub of subscribers) {
+                        try {
+                            const user = await channel.client.users.fetch(sub.discord_user_id);
+                            await user.send(alertMsg);
+                        } catch (e) {
+                            console.error(`Could not DM user ${sub.discord_user_id}. Their DMs might be closed.`);
+                        }
+                    }
+                }
+            }
+        }
+        // Save the current list so we can compare it next time!
+        previousNaughtyOnline = currentNaughtyNames;
     }
 }
 
