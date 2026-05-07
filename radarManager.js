@@ -188,7 +188,7 @@ async function updateRadarMessage(channel, db, type) {
 
                 const subscribers = db.prepare('SELECT discord_user_id FROM alert_subscribers').all();
                 if (subscribers.length > 0) {
-                    const alertMsg = `🚨 **NAUGHTY ALERT (${newlyOnlineNames.length})** 🚨\nThe Queen's scouts spotted the following enemies logging in:\n${formattedNames}`;
+                    const alertMsg = `🚨 **NAUGHTY ALERT (${newlyOnlineNames.length})** 🚨\n${formattedNames}`;
                     
                     for (const sub of subscribers) {
                         try {
