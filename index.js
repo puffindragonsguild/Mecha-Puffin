@@ -38,9 +38,34 @@ for (const file of commandFiles) {
     }
 }
 
-client.once('clientReady', () => {
-    console.log('🤖 PuffinBot Engine is ONLINE with Dynamic Commands!');
+client.once('clientReady', async () => {
+    console.log('🤖 PuffinBot Engine is ONLINE!');
+
+    // --- AUTO-RESUME STATE RECOVERY ---
+    const activeTasks = db.prepare('SELECT * FROM active_tasks').all();
+    
+    for (const task of activeTasks) {
+        try {
+            // Find the specific channel the task belongs to
+            const channel = await client.channels.fetch(task.channel_id);
+            if (!channel) continue;
+
+            if (task.task_name === 'RADAR') {
+                console.log('🔄 Auto-resuming Live Radar...');
+                radarManager.startRadar(channel, db, true);
+            } 
+            else if (task.task_name === 'LOTTERY') {
+                console.log('🔄 Auto-resuming Lottery Loop...');
+                lotteryManager.startLotteryLoop(channel, db, true);
+            }
+            // (You can easily add your RAID signups recovery here in the future!)
+            
+        } catch (err) {
+            console.error(`⚠️ Failed to resume ${task.task_name}:`, err);
+        }
+    }
 });
+
 
 // ---------------------------------------------------------
 // 1. DYNAMIC COMMAND HANDLER
