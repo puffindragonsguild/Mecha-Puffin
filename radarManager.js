@@ -29,6 +29,7 @@ async function buildRadarData(db, type) {
         let totalOnline = 0;
         let output = [];
         let currentNaughtyNames = [];
+        let currentNaughtyDetails = []; // 👈 New: Stores the voc and level for the DMs
 
         // 1. Filter out what to fetch based on radar type
         if (type === 'FRIENDLY') {
@@ -98,7 +99,9 @@ async function buildRadarData(db, type) {
                 const apiData = guildResults[index];
                 if (apiData?.guild?.members) {
                     const onlineMembers = apiData.guild.members.filter(m => m.status === 'online');
-                    onlineMembers.forEach(m => currentNaughtyNames.push(m.name));
+                    onlineMembers.forEach(m => {
+                        currentNaughtyDetails.push({ name: m.name, voc: formatVoc(m.vocation), level: m.level });
+                    });
                 }
                 const guildText = processGuild(guildName, apiData);
                 if (guildText) output.push(`⚔️ ` + guildText);
@@ -107,12 +110,17 @@ async function buildRadarData(db, type) {
             const onlineNaughty = onlineWorldPlayers.filter(p => charsToTrack.naughty.includes(p.name.toLowerCase()));
             if (onlineNaughty.length > 0) {
                 totalOnline += onlineNaughty.length;
-                onlineNaughty.forEach(p => currentNaughtyNames.push(p.name));
+                onlineNaughty.forEach(p => {
+                    currentNaughtyDetails.push({ name: p.name, voc: formatVoc(p.vocation), level: p.level });
+                });
                 output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
             }
             
             // Remove duplicates in case someone is in a naughty guild AND tracked individually
-            currentNaughtyNames = [...new Set(currentNaughtyNames)];
+            const uniqueDetailsMap = new Map();
+            currentNaughtyDetails.forEach(p => uniqueDetailsMap.set(p.name, p));
+            currentNaughtyDetails = Array.from(uniqueDetailsMap.values());
+            currentNaughtyNames = Array.from(uniqueDetailsMap.keys());
         }
 
         const title = type === 'FRIENDLY' ? `🌍 Puffins & Friends Radar` : `☠️ Naughty Radar`;
@@ -126,17 +134,17 @@ async function buildRadarData(db, type) {
             .setFooter({ text: "Auto-updates every 5 minutes" })
             .setTimestamp();
 
-        return { embed, totalOnline, currentNaughtyNames };
+        return { embed, totalOnline, currentNaughtyNames, currentNaughtyDetails };
 
     } catch (error) {
         console.error(`Radar Fetch Error (${type}):`, error);
         const embed = new EmbedBuilder().setTitle(`🌍 ${type} Radar`).setColor(0xff0000).setDescription("⚠️ **API Error:** The Queen's scouts were ambushed! Retrying in 5 minutes...");
-        return { embed, totalOnline: -1, currentNaughtyNames: null };
+        return { embed, totalOnline: -1, currentNaughtyNames: null, currentNaughtyDetails: null };
     }
 }
 
 async function updateRadarMessage(channel, db, type) {
-    const { embed, totalOnline, currentNaughtyNames } = await buildRadarData(db, type);
+    const { embed, totalOnline, currentNaughtyNames, currentNaughtyDetails } = await buildRadarData(db, type);
     const taskName = type === 'FRIENDLY' ? 'RADAR_FRIENDLY' : 'RADAR_NAUGHTY';
 
     // 1. Message Editing Logic
@@ -156,27 +164,31 @@ async function updateRadarMessage(channel, db, type) {
     if (totalOnline !== -1 && totalOnline !== lastOnlineCounts[type]) {
         lastOnlineCounts[type] = totalOnline;
         
-        // Discord text channels auto-format spaces to hyphens. 
         const newName = type === 'FRIENDLY' ? `puffins-online-${totalOnline}` : `naughty-online-${totalOnline}`;
         
         try {
             await channel.setName(newName);
         } catch (e) {
-            console.error(`Could not rename channel ${channel.id}. Check bot permissions (Manage Channels).`);
+            console.error(`Could not rename channel ${channel.id}. Check bot permissions.`);
         }
     }
 
-    // 3. Naughty DM Alert Logic
+    // 3. Naughty DM Alert Logic (Updated Layout)
     if (type === 'NAUGHTY' && currentNaughtyNames) {
-        // We check if previous is NOT null so we don't spam everyone the second the bot turns on
         if (previousNaughtyOnline !== null) {
             // Find enemies that are online NOW, but were NOT online 5 minutes ago
-            const newlyOnline = currentNaughtyNames.filter(name => !previousNaughtyOnline.includes(name));
+            const newlyOnlineNames = currentNaughtyNames.filter(name => !previousNaughtyOnline.includes(name));
             
-            if (newlyOnline.length > 0) {
+            if (newlyOnlineNames.length > 0) {
+                // Match the new names with their vocation and level details
+                const newlyOnlineDetails = currentNaughtyDetails.filter(p => newlyOnlineNames.includes(p.name));
+                
+                // Format them nicely with comma separation: "🛡️ Name (300), 🔥 Name2 (250)"
+                const formattedNames = newlyOnlineDetails.map(p => `${p.voc} ${p.name} (${p.level})`).join(', ');
+
                 const subscribers = db.prepare('SELECT discord_user_id FROM alert_subscribers').all();
                 if (subscribers.length > 0) {
-                    const alertMsg = `🚨 **NAUGHTY ALERT** 🚨\nThe Queen's scouts spotted the following enemies logging in:\n• ${newlyOnline.join('\n• ')}`;
+                    const alertMsg = `🚨 **NAUGHTY ALERT (${newlyOnlineNames.length})** 🚨\nThe Queen's scouts spotted the following enemies logging in:\n${formattedNames}`;
                     
                     for (const sub of subscribers) {
                         try {
@@ -189,7 +201,7 @@ async function updateRadarMessage(channel, db, type) {
                 }
             }
         }
-        // Save the current list so we can compare it next time!
+        // Save the current list so we can compare it next time
         previousNaughtyOnline = currentNaughtyNames;
     }
 }
