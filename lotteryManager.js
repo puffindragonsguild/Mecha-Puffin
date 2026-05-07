@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRzaQ7j81dpm9fhfmpjBiLAh6vBvJCuCYXqSsmAnPNEyRJZ-rS8k6-PVe4Mw2UNgwN-rgJSN9xjyHUH/pub?gid=0&single=true&output=csv";
 
-let lotteryInterval = null;
+let lotteryTimer = null;
 
 // Helper to convert "1,500,000" into "1.5kk"
 const formatGold = (value) => {
