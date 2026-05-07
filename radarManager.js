@@ -6,7 +6,8 @@ const CORE_GUILDS = ["Puffin Dragons", "Slightly Smaller Dragons", "Noobemon"];
 // Split memory for two isolated radars
 let radarIntervals = { FRIENDLY: null, NAUGHTY: null };
 let lastRadarMessages = { FRIENDLY: null, NAUGHTY: null };
-let lastOnlineCounts = { FRIENDLY: -1, NAUGHTY: -1 }; 
+let lastOnlineCounts = { FRIENDLY: -1, NAUGHTY: -1 };
+let previousNaughtyOnline = null; // Used to prevent spamming on bot restarts
 
 const formatVoc = (voc) => {
     const v = voc.toLowerCase();
