@@ -121,23 +121,27 @@ async function updateRadarMessage(channel, db) {
     }
 }
 
-function startRadar(channel, db) {
+function startRadar(channel, db, isAutoResume = false) {
     if (radarInterval) clearInterval(radarInterval);
     
-    // Run immediately the first time
-    updateRadarMessage(channel, db);
+    // Save to permanent memory so it survives a reboot
+    db.prepare('INSERT OR REPLACE INTO active_tasks (task_name, channel_id) VALUES (?, ?)').run('RADAR', channel.id);
+
+    if (!isAutoResume) updateRadarMessage(channel, db);
     
-    // Then loop every 5 minutes (300,000 milliseconds)
     radarInterval = setInterval(() => {
         updateRadarMessage(channel, db);
     }, 5 * 60 * 1000);
 }
 
-function stopRadar() {
+function stopRadar(db) {
     if (radarInterval) {
         clearInterval(radarInterval);
         radarInterval = null;
     }
+    // Delete from permanent memory
+    if (db) db.prepare('DELETE FROM active_tasks WHERE task_name = ?').run('RADAR');
 }
+
 
 module.exports = { startRadar, stopRadar };
