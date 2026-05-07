@@ -111,36 +111,42 @@ async function updateRadarMessage(channel, db) {
 
     if (!lastRadarMessage) {
         lastRadarMessage = await channel.send({ embeds: [embed] });
+        // Save the new Message ID to the database!
+        db.prepare('UPDATE active_tasks SET extra_data = ? WHERE task_name = ?').run(lastRadarMessage.id, 'RADAR');
     } else {
         try {
             await lastRadarMessage.edit({ embeds: [embed] });
         } catch (e) {
-            // If someone manually deleted the bot's message, send a new one
+            // If someone manually deleted the bot's old message, send a new one
             lastRadarMessage = await channel.send({ embeds: [embed] });
+            db.prepare('UPDATE active_tasks SET extra_data = ? WHERE task_name = ?').run(lastRadarMessage.id, 'RADAR');
         }
     }
 }
 
-function startRadar(channel, db, isAutoResume = false) {
+async function startRadar(channel, db, isAutoResume = false, savedMessageId = null) {
     if (radarInterval) clearInterval(radarInterval);
     
-    // Save to permanent memory so it survives a reboot
-    db.prepare('INSERT OR REPLACE INTO active_tasks (task_name, channel_id) VALUES (?, ?)').run('RADAR', channel.id);
-
-    if (!isAutoResume) updateRadarMessage(channel, db);
+    if (isAutoResume && savedMessageId) {
+        try {
+            // Try to pull the old message from Discord's servers so we can edit it!
+            lastRadarMessage = await channel.messages.fetch(savedMessageId);
+        } catch (err) {
+            console.log("⚠️ Could not find the old radar message (maybe it was deleted). Sending a new one.");
+            lastRadarMessage = null;
+        }
+    } else if (!isAutoResume) {
+        // Started manually! Create the initial database entry
+        db.prepare('INSERT OR REPLACE INTO active_tasks (task_name, channel_id) VALUES (?, ?)').run('RADAR', channel.id);
+    }
     
+    // Run immediately (this will either edit the old message or send a new one)
+    await updateRadarMessage(channel, db);
+    
+    // Then loop every 5 minutes (300,000 milliseconds)
     radarInterval = setInterval(() => {
         updateRadarMessage(channel, db);
     }, 5 * 60 * 1000);
-}
-
-function stopRadar(db) {
-    if (radarInterval) {
-        clearInterval(radarInterval);
-        radarInterval = null;
-    }
-    // Delete from permanent memory
-    if (db) db.prepare('DELETE FROM active_tasks WHERE task_name = ?').run('RADAR');
 }
 
 
