@@ -36,7 +36,6 @@ async function processLottery(channel, db) {
         // Row 2 is index 1.
         const totalSold = rows[1][3] || "0"; 
         
-        // You mentioned D3 is tickets left AND D3 is 1st Prize. 
         // Assuming standard layout: D3 = Left, D4 = 1st, D5 = 2nd, D6 = 3rd.
         const ticketsLeft = rows[2][3] || "0"; 
         const firstPrize = formatGold(rows[3][3]);  
@@ -52,9 +51,11 @@ async function processLottery(channel, db) {
             const tickets = parseInt(rows[i][1] || "0", 10);
 
             if (charName && tickets === 0) {
-                // Check if this character is in our database
-                const dbEntry = db.prepare('SELECT discord_user_id FROM trackers WHERE LOWER(character_name) = LOWER(?)').get(charName);
-                if (dbEntry && dbEntry.discord_user_id) {
+                // Check if this character is in our database AND is currently active
+                const dbEntry = db.prepare('SELECT discord_user_id, is_active FROM trackers WHERE LOWER(character_name) = LOWER(?)').get(charName);
+                
+                // If they exist in the DB, have a Discord ID, and have NOT been deactivated
+                if (dbEntry && dbEntry.discord_user_id && dbEntry.is_active !== 0) {
                     shamePings.add(`<@${dbEntry.discord_user_id}>`);
                 }
             }
@@ -76,6 +77,43 @@ async function processLottery(channel, db) {
                             `[🔗 View available numbers here](https://shorturl.at/a5A6C)`)
             .setFooter({ text: "May Fortuna bless your RNG!" })
             .setTimestamp();
+
+        // --- SEND MESSAGE ---
+        let pingText = "";
+        if (shamePings.size > 0) {
+            pingText = `🚨 **ATTENTION DISAPPOINTING PUFFINS!** 🚨\nThe Queen has noticed the following subjects have **0 tickets**:\n${Array.from(shamePings).join(' ')}\n\n*Pay your taxes to the throne!*`;
+        } else {
+            pingText = "🎉 **All active, registered Puffins have bought a ticket! The Queen is pleased!**";
+        }
+
+        channel.send({ content: pingText, embeds: [embed] });
+
+    } catch (error) {
+        console.error("Lottery Fetch Error:", error);
+        channel.send("⚠️ **Error:** The Queen's accountants spilled coffee on the ledger! Could not fetch the lottery CSV.");
+    }
+}
+
+function startLotteryLoop(channel, db) {
+    if (lotteryInterval) clearInterval(lotteryInterval);
+    
+    // Run immediately
+    processLottery(channel, db);
+    
+    // Run every 7 days (7 * 24 * 60 * 60 * 1000 milliseconds)
+    lotteryInterval = setInterval(() => {
+        processLottery(channel, db);
+    }, 604800000); 
+}
+
+function stopLotteryLoop() {
+    if (lotteryInterval) {
+        clearInterval(lotteryInterval);
+        lotteryInterval = null;
+    }
+}
+
+module.exports = { startLotteryLoop, stopLotteryLoop };
 
         // --- SEND MESSAGE ---
         let pingText = "";
