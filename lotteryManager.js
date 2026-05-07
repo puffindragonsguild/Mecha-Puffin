@@ -63,7 +63,7 @@ async function processLottery(channel, db) {
 
         // --- BUILD EMBED ---
         const embed = new EmbedBuilder()
-            .setTitle("🎲 Puffin Dragons Weekly Lottery 🎲")
+            .setTitle("🎲 Puffin Dragons Lottery 🎲")
             .setColor(0xffd700)
             .setDescription(`**${totalSold}** tickets sold! We have **${ticketsLeft}** tickets remaining.\n\n` +
                             `🥇 **1st Prize:** ${firstPrize}\n` +
