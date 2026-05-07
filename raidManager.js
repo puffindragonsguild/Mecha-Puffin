@@ -4,7 +4,7 @@ const db = require('./database.js');
 
 // 🔒 State Variables (Encapsulated here!)
 let gatesOpen = false;
-let hypeInterval;
+let hypeTimer = null;
 let lastRosterMessage = null;
 
 // --- DATE FUNCTION ---
@@ -95,23 +95,60 @@ async function displayRoster(target) {
     lastRosterMessage = await target.send({ embeds: [rosterEmbed], components: row.components.length > 0 ? [row] : [] });
 }
 
-// --- HYPE LOOP ---
-const startHypeLoop = (message, raidType) => {
-    if (hypeInterval) clearInterval(hypeInterval);
-    hypeInterval = setInterval(() => {
-        if (!gatesOpen) return clearInterval(hypeInterval);
-        message.channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${raidType}**!`);
-        displayRoster(message.channel);
-    }, 48 * 60 * 60 * 1000); 
+// --- HYPE LOOP (State Recovery Enabled) ---
+const startHypeLoop = (channel, raidType, db, isAutoResume = false) => {
+    if (hypeTimer) clearTimeout(hypeTimer);
+    
+    // Ensure the gates are open in the bot's memory!
+    gatesOpen = true; 
+    
+    const fortyEightHours = 48 * 60 * 60 * 1000;
+
+    const loop = () => {
+        if (!gatesOpen) return;
+        channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${raidType}**!`);
+        displayRoster(channel);
+        db.prepare('UPDATE active_tasks SET next_run_time = ? WHERE task_name = ?').run(Date.now() + fortyEightHours, 'RAID_HYPE');
+        hypeTimer = setTimeout(loop, fortyEightHours);
+    };
+
+    if (!isAutoResume) {
+        // Started manually! Save it to the database with the raidType as extra_data
+        db.prepare('INSERT OR REPLACE INTO active_tasks (task_name, channel_id, next_run_time, extra_data) VALUES (?, ?, ?, ?)')
+          .run('RAID_HYPE', channel.id, Date.now() + fortyEightHours, raidType);
+        hypeTimer = setTimeout(loop, fortyEightHours);
+    } else {
+        // Auto-Resumed after a reboot! Check how much time is left.
+        const task = db.prepare('SELECT next_run_time, extra_data FROM active_tasks WHERE task_name = ?').get('RAID_HYPE');
+        let timeLeft = task.next_run_time - Date.now();
+
+        if (timeLeft <= 0) {
+            // The bot missed a hype announcement while offline! Send it now.
+            channel.send(`🔥 **THE RAID CONTINUES!** 🔥\nStill need Puffins for **${task.extra_data}**!`);
+            displayRoster(channel);
+            timeLeft = fortyEightHours;
+            db.prepare('UPDATE active_tasks SET next_run_time = ? WHERE task_name = ?').run(Date.now() + fortyEightHours, 'RAID_HYPE');
+        }
+        hypeTimer = setTimeout(loop, timeLeft);
+    }
+};
+
+const stopHypeLoop = (db) => {
+    if (hypeTimer) {
+        clearTimeout(hypeTimer);
+        hypeTimer = null;
+    }
+    gatesOpen = false;
+    // Wipe it from permanent memory
+    if (db) db.prepare('DELETE FROM active_tasks WHERE task_name = ?').run('RAID_HYPE');
 };
 
 // --- GETTERS & SETTERS ---
-// These allow index.js to safely check or change the status of the gates
 module.exports = {
     displayRoster,
     startHypeLoop,
+    stopHypeLoop,
     getNextWednesday,
     isGatesOpen: () => gatesOpen,
-    setGatesOpen: (status) => { gatesOpen = status; },
-    stopHypeLoop: () => { if (hypeInterval) clearInterval(hypeInterval); }
+    setGatesOpen: (status) => { gatesOpen = status; }
 };
