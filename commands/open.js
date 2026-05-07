@@ -28,7 +28,7 @@ module.exports = {
             );
 
             message.channel.send({ embeds: [dtEmbed], components: [row] });
-            raidManager.startHypeLoop(message, 'Double Trouble');
+            raidManager.startHypeLoop(message, 'Double Trouble',db);
 
         } else if (raidType === 'feru') {
             raidManager.setGatesOpen(true);
@@ -48,7 +48,7 @@ module.exports = {
             );
 
             message.channel.send({ embeds: [feruEmbed], components: [row] });
-            raidManager.startHypeLoop(message, 'Ferumbras');
+            raidManager.startHypeLoop(message, 'Ferumbras',db);
 
         } else if (raidType === 'reserves') {
             raidManager.setGatesOpen(true);
