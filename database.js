@@ -91,5 +91,16 @@ try {
     // Silently skip if column already exists
 }
 
+// State Recovery Table (Auto-Resume after restarts)
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS active_tasks (
+        task_name TEXT PRIMARY KEY,
+        channel_id TEXT,
+        next_run_time INTEGER,
+        extra_data TEXT
+    )
+`).run();
+console.log("💾 State Recovery Banks: ONLINE");
+
 
 module.exports = db;
