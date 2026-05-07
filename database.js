@@ -1,12 +1,18 @@
 // database.js
 const Database = require('better-sqlite3');
 const fs = require('fs');
+const path = require('path');
 
-if (!fs.existsSync('./data')) {
-    fs.mkdirSync('./data');
+// This tells the bot: "If Railway gives us a specific folder path, use it. Otherwise, use our local folder."
+const dataFolder = process.env.DATA_DIR || path.join(__dirname, 'data');
+
+if (!fs.existsSync(dataFolder)) {
+    fs.mkdirSync(dataFolder, { recursive: true });
 }
 
-const db = new Database('./data/puffin.db');
+const dbPath = path.join(dataFolder, 'puffin.db');
+const db = new Database(dbPath);
+
 
 db.prepare(`
     CREATE TABLE IF NOT EXISTS signups (
