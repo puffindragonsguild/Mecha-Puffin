@@ -102,5 +102,12 @@ db.prepare(`
 `).run();
 console.log("💾 State Recovery Banks: ONLINE");
 
+// Naughty Alert Subscribers
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS alert_subscribers (
+        discord_user_id TEXT PRIMARY KEY
+    )
+`).run();
+console.log("💾 Alert Memory Banks: ONLINE");
 
 module.exports = db;
