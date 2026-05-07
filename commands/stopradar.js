@@ -5,7 +5,7 @@ module.exports = {
     description: 'Stops the live auto-updating online radar.',
     adminOnly: true,
     execute(message, args, client, db) {
-        radarManager.stopRadar();
+        radarManager.stopRadar(db);
         message.reply('🛑 **Radar Deactivated.** The scouts have returned to the depot.');
     },
 };
