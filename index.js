@@ -10,7 +10,10 @@ const {
 const ADMIN_ROLE_NAME = "Bot Admin"; 
 const messages = require('./messages.js');
 const db = require('./database.js'); 
-const raidManager = require('./raidManager.js'); 
+const raidManager = require('./raidManager.js');
+const radarManager = require('./radarManager.js');
+const lotteryManager = require('./lotteryManager.js');
+
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
