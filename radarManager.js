@@ -132,7 +132,7 @@ async function startRadar(channel, db, isAutoResume = false, savedMessageId = nu
             // Try to pull the old message from Discord's servers so we can edit it!
             lastRadarMessage = await channel.messages.fetch(savedMessageId);
         } catch (err) {
-            console.log("⚠️ Could not find the old radar message (maybe it was deleted). Sending a new one.");
+            console.log("⚠️ Could not find the old radar message. Sending a new one.");
             lastRadarMessage = null;
         }
     } else if (!isAutoResume) {
@@ -148,6 +148,18 @@ async function startRadar(channel, db, isAutoResume = false, savedMessageId = nu
         updateRadarMessage(channel, db);
     }, 5 * 60 * 1000);
 }
+
+function stopRadar(db) {
+    if (radarInterval) {
+        clearInterval(radarInterval);
+        radarInterval = null;
+    }
+    // Delete from permanent memory
+    if (db) db.prepare('DELETE FROM active_tasks WHERE task_name = ?').run('RADAR');
+}
+
+module.exports = { startRadar, stopRadar };
+
 
 
 module.exports = { startRadar, stopRadar };
