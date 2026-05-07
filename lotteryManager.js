@@ -94,23 +94,45 @@ async function processLottery(channel, db) {
     }
 }
 
-function startLotteryLoop(channel, db) {
-    if (lotteryInterval) clearInterval(lotteryInterval);
+function startLotteryLoop(channel, db, isAutoResume = false) {
+    if (lotteryTimer) clearTimeout(lotteryTimer);
     
-    // Run immediately
-    processLottery(channel, db);
-    
-    // Run every 7 days (7 * 24 * 60 * 60 * 1000 milliseconds)
-    lotteryInterval = setInterval(() => {
-        processLottery(channel, db);
-    }, 604800000); 
-}
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
 
-function stopLotteryLoop() {
-    if (lotteryInterval) {
-        clearInterval(lotteryInterval);
-        lotteryInterval = null;
+    // A smart looping function that keeps saving the NEXT run time
+    const loop = () => {
+        processLottery(channel, db);
+        db.prepare('UPDATE active_tasks SET next_run_time = ? WHERE task_name = ?').run(Date.now() + sevenDays, 'LOTTERY');
+        lotteryTimer = setTimeout(loop, sevenDays);
+    };
+
+    if (!isAutoResume) {
+        // Started manually! Save it and run it immediately.
+        db.prepare('INSERT OR REPLACE INTO active_tasks (task_name, channel_id, next_run_time) VALUES (?, ?, ?)').run('LOTTERY', channel.id, Date.now() + sevenDays);
+        processLottery(channel, db);
+        lotteryTimer = setTimeout(loop, sevenDays);
+    } else {
+        // Auto-Resumed after a reboot! Check how much time is left.
+        const task = db.prepare('SELECT next_run_time FROM active_tasks WHERE task_name = ?').get('LOTTERY');
+        let timeLeft = task.next_run_time - Date.now();
+
+        if (timeLeft <= 0) {
+            // The bot missed the deadline while offline! Run it now.
+            processLottery(channel, db);
+            timeLeft = sevenDays;
+            db.prepare('UPDATE active_tasks SET next_run_time = ? WHERE task_name = ?').run(Date.now() + sevenDays, 'LOTTERY');
+        }
+        lotteryTimer = setTimeout(loop, timeLeft);
     }
 }
+
+function stopLotteryLoop(db) {
+    if (lotteryTimer) {
+        clearTimeout(lotteryTimer);
+        lotteryTimer = null;
+    }
+    if (db) db.prepare('DELETE FROM active_tasks WHERE task_name = ?').run('LOTTERY');
+}
+
 
 module.exports = { startLotteryLoop, stopLotteryLoop };
