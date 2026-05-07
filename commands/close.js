@@ -4,7 +4,7 @@ module.exports = {
     adminOnly: true,
     execute(message, args, client, db, raidManager) {
         raidManager.setGatesOpen(false);
-        raidManager.stopHypeLoop();
+        raidManager.stopHypeLoop(db);
         message.reply('🛑 **The gates are now CLOSED.**');
     },
 };
