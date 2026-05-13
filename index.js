@@ -51,6 +51,13 @@ client.once('clientReady', async () => {
 
     // --- AUTO-RESUME STATE RECOVERY ---
     const activeTasks = db.prepare('SELECT * FROM active_tasks').all();
+
+    // --- GATE CRASH RECOVERY ---
+    const gateTask = db.prepare('SELECT * FROM active_tasks WHERE task_name = ?').get('GATES_OPEN');
+    if (gateTask) {
+        raidManager.setGatesOpen(true, db);
+        console.log('🚪 Crash Recovery: Raid gates restored to OPEN.');
+    }
     
     for (const task of activeTasks) {
         try {
@@ -202,10 +209,35 @@ client.on('interactionCreate', async interaction => {
             const char = data.character.character;
             const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
             if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian.`);
-            if (db.prepare('SELECT id FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName)) return interaction.editReply(`❌ Already signed up.`);
 
+            // Determine their exact choice based on Puffin status
             const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             let finalChoice = (qType === 'LASTRESORT') ? 'LAST_RESORT' : (isPuffin || qType !== 'MAIN' ? bossChoice : `PUBLIC_${bossChoice}`);
+
+            // 🧠 SMART DUPLICATE CHECK: Are they trying to merge HoD and LLK?
+            const existingSignup = db.prepare('SELECT id, boss_choice FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
+            
+            if (existingSignup) {
+                const curr = existingSignup.boss_choice;
+                
+                // If they are a Reserve, that covers the whole night anyway
+                if (curr === 'LAST_RESORT' || finalChoice === 'LAST_RESORT') {
+                    return interaction.editReply(`❌ Already signed up! (Reserves apply to the entire raid night)`);
+                }
+
+                // If they have one boss and are signing up for the other
+                if (
+                    (curr.includes('LLK') && (bossChoice === 'HOD' || bossChoice === 'BOTH')) ||
+                    (curr.includes('HOD') && (bossChoice === 'LLK' || bossChoice === 'BOTH'))
+                ) {
+                    const newChoice = isPuffin ? 'BOTH' : 'PUBLIC_BOTH';
+                    db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, existingSignup.id);
+                    
+                    return interaction.editReply(`✅ <@${interaction.user.id}>, **${charName}** upgraded! You are now signed up for **BOTH** bosses!`);
+                }
+
+                return interaction.editReply(`❌ You are already signed up for this!`);
+            }
             
             let vocAbbr = rawVoc; let vocEmoji = '❓';
             if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
