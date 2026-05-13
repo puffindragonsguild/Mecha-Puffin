@@ -1,8 +1,12 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'roster',
-    description: 'Displays the current raid roster.',
+    data: new SlashCommandBuilder()
+        .setName('roster')
+        .setDescription('Displays the current raid roster.'),
     adminOnly: false,
-    execute(message, args, client, db, raidManager) {
-        raidManager.displayRoster(message.channel);
+    async execute(interaction, client, db, raidManager) {
+        await interaction.reply({ content: '📜 Summoning the roster...', ephemeral: true });
+        raidManager.displayRoster(interaction.channel);
     },
 };
