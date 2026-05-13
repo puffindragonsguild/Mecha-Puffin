@@ -119,7 +119,9 @@ db.prepare(`
 `).run();
 console.log("💾 Stopwatch Memory Banks: ONLINE");
 
-// Oracle / Decree Memory Banks
+// ---------------------------------------------------------
+// 🔮 ORACLE / DECREE MEMORY BANKS
+// ---------------------------------------------------------
 db.prepare(`
     CREATE TABLE IF NOT EXISTS oracle_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -137,6 +139,16 @@ db.prepare(`
     INSERT OR IGNORE INTO oracle_state (id, dreamscar_anchor_day, dreamscar_anchor_index, deepling_status, deepling_last_updated) 
     VALUES (1, 0, 0, 'Deepling not scouted', 0)
 `).run();
+
+// Upgrade Oracle Memory for Minis and Events (Wrapped in a try/catch so it doesn't crash if they already exist!)
+try {
+    db.prepare('ALTER TABLE oracle_state ADD COLUMN mini_world_changes TEXT').run();
+    db.prepare('ALTER TABLE oracle_state ADD COLUMN mini_updated_at INTEGER').run();
+    db.prepare('ALTER TABLE oracle_state ADD COLUMN active_events TEXT').run();
+} catch (e) {
+    // Columns already exist, safe to ignore!
+}
+
 console.log("🔮 Oracle Memory Banks: ONLINE");
 
 module.exports = db;
