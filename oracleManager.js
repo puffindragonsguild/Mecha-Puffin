@@ -2,48 +2,45 @@ const { EmbedBuilder } = require('discord.js');
 
 const DREAMSCAR_BOSSES = ["Plagueroot", "Malofur Mangrinder", "Maxxenius", "Alptramun", "Izcandar"];
 
-// Helper: Tibia server save is 10:00 CE(S)T (08:00 UTC). 
-// Subtracting 8 hours from UTC makes the "day" roll over perfectly at Server Save!
 function getTibiaDay() {
     const now = new Date();
     now.setUTCHours(now.getUTCHours() - 8);
     return Math.floor(now.getTime() / (1000 * 60 * 60 * 24));
 }
 
-// 🐪 RASHID MATH HELPER
 function getRashidLocation() {
     const now = new Date();
     now.setUTCHours(now.getUTCHours() - 8);
-    const day = now.getUTCDay(); // 0 = Sunday, 1 = Monday
+    const day = now.getUTCDay(); 
     const locations = [
-        "Carlin (Depot)",       // 0 - Sunday
-        "Svargrond (Tavern)",   // 1 - Monday
-        "Liberty Bay (Tavern)", // 2 - Tuesday
-        "Port Hope (Tavern)",   // 3 - Wednesday
-        "Ankrahmun (Tavern)",   // 4 - Thursday
-        "Darashia (Tavern)",    // 5 - Friday
-        "Edron (Tavern)"        // 6 - Saturday
+        "Carlin (Depot)", "Svargrond (Tavern)", "Liberty Bay (Tavern)", 
+        "Port Hope (Tavern)", "Ankrahmun (Tavern)", "Darashia (Tavern)", "Edron (Tavern)"
     ];
     return locations[day];
 }
 
-// 🏟️ DROME MATH HELPER
 function getDromeStatus() {
-    // Anchor: May 13, 2026 (Month is 4 because JS counts Jan as 0)
-    const anchor = new Date(Date.UTC(2026, 4, 13, 8, 0, 0)); 
-    const now = new Date();
-    
-    const diff = now.getTime() - anchor.getTime();
-    const daysPassed = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
+    const currentTibiaDay = getTibiaDay();
+    // Anchor Tibia Day: May 13, 2026.
+    const anchorDate = new Date(Date.UTC(2026, 4, 13, 8, 0, 0)); 
+    anchorDate.setUTCHours(anchorDate.getUTCHours() - 8);
+    const anchorTibiaDay = Math.floor(anchorDate.getTime() / (1000 * 60 * 60 * 24));
+
+    const daysPassed = currentTibiaDay - anchorTibiaDay;
     const daysIntoRotation = daysPassed % 14;
-    const daysLeft = 14 - daysIntoRotation;
+    const finalDaysIntoRotation = daysIntoRotation < 0 ? daysIntoRotation + 14 : daysIntoRotation;
     
-    const endDate = new Date(anchor.getTime() + ((daysPassed + daysLeft) * 24 * 60 * 60 * 1000));
-    const dd = String(endDate.getUTCDate()).padStart(2, '0');
-    const mm = String(endDate.getUTCMonth() + 1).padStart(2, '0');
+    const daysLeft = 14 - finalDaysIntoRotation;
+
+    // Calculate the exact date it ends
+    const endDate = new Date();
+    endDate.setUTCHours(endDate.getUTCHours() - 8); // Align to Tibia time
+    endDate.setDate(endDate.getDate() + daysLeft);
+    const dd = String(endDate.getDate()).padStart(2, '0');
+    const mm = String(endDate.getMonth() + 1).padStart(2, '0');
     
-    if (daysLeft === 14) return `Resets TODAY at 10:00 CE(S)T`;
+    if (daysLeft === 1) return `Resets TOMORROW at 10:00 CE(S)T`;
+    if (daysLeft === 14) return `14 days left (Just reset today!)`;
     return `${daysLeft} days left (ends at 10:00 CE(S)T ${dd}/${mm})`;
 }
 
@@ -89,32 +86,23 @@ async function postOrUpdateDecree(channel, db) {
     const state = db.prepare('SELECT * FROM oracle_state WHERE id = 1').get();
     const currentTibiaDay = getTibiaDay();
 
-    // 1. Dreamscar
     const daysPassed = currentTibiaDay - state.dreamscar_anchor_day;
     const currentDreamscarIndex = (state.dreamscar_anchor_index + daysPassed) % 5;
     const finalIndex = currentDreamscarIndex < 0 ? currentDreamscarIndex + 5 : currentDreamscarIndex;
     const dreamscarBoss = DREAMSCAR_BOSSES[finalIndex];
 
-    // 2. Deepling
     let currentDeepling = state.deepling_status;
     if (state.deepling_last_updated !== currentTibiaDay) {
         currentDeepling = "Deepling not scouted";
-        db.prepare('UPDATE oracle_state SET deepling_status = ?, deepling_last_updated = ? WHERE id = 1')
-          .run(currentDeepling, currentTibiaDay);
+        db.prepare('UPDATE oracle_state SET deepling_status = ?, deepling_last_updated = ? WHERE id = 1').run(currentDeepling, currentTibiaDay);
     }
 
-    // 3. Mini World Changes Math
     const daysSinceMini = currentTibiaDay - (state.mini_updated_at || 0);
     let miniUpdateText = "";
-    if (!state.mini_updated_at) {
-        miniUpdateText = "*(Not reported yet)*";
-    } else if (daysSinceMini === 0) {
-        miniUpdateText = "*(Updated: Today)*";
-    } else if (daysSinceMini === 1) {
-        miniUpdateText = "*(Updated: Yesterday)*";
-    } else {
-        miniUpdateText = `*(Updated: ${daysSinceMini} days ago)*`;
-    }
+    if (!state.mini_updated_at) miniUpdateText = "*(Not reported yet)*";
+    else if (daysSinceMini === 0) miniUpdateText = "*(Updated: Today)*";
+    else if (daysSinceMini === 1) miniUpdateText = "*(Updated: Yesterday)*";
+    else miniUpdateText = `*(Updated: ${daysSinceMini} days ago)*`;
 
     const embed = new EmbedBuilder()
         .setTitle("📜 The Queen's Daily Decree")
@@ -148,12 +136,16 @@ async function postOrUpdateDecree(channel, db) {
 }
 
 function triggerDailyLoop(client, db) {
-    setInterval(async () => {
+    // 🚀 NEW: Instantly run a check when the bot boots up!
+    const runCheck = async () => {
         const state = db.prepare('SELECT * FROM oracle_state WHERE id = 1').get();
         if (!state.channel_id) return; 
         const channel = await client.channels.fetch(state.channel_id).catch(() => null);
         if (channel) postOrUpdateDecree(channel, db);
-    }, 10 * 60 * 1000);
+    };
+
+    runCheck(); // Fire immediately on startup
+    setInterval(runCheck, 10 * 60 * 1000); // Then every 10 minutes
 }
 
 module.exports = { postOrUpdateDecree, triggerDailyLoop, getTibiaDay, DREAMSCAR_BOSSES };
