@@ -1,23 +1,27 @@
-module.exports = {
-    name: 'whitelist',
-    description: 'Adds or removes a character from the whitelist.',
-    adminOnly: true,
-    execute(message, args, client, db) {
-        const action = args[0]?.toLowerCase();
-        const name = args.slice(1).join(' '); // Combines the rest of the arguments into the name
+const { SlashCommandBuilder } = require('discord.js');
 
-        if (!action || !name) {
-            return message.reply('❌ Usage: `!whitelist add [Name]` or `!whitelist remove [Name]`');
-        }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('whitelist')
+        .setDescription('Adds or removes a character from the whitelist.')
+        .addStringOption(option => option.setName('action')
+            .setDescription('Add or Remove')
+            .setRequired(true)
+            .addChoices({ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }))
+        .addStringOption(option => option.setName('character')
+            .setDescription('Character Name')
+            .setRequired(true)),
+    adminOnly: true,
+    async execute(interaction, client, db) {
+        const action = interaction.options.getString('action');
+        const name = interaction.options.getString('character').trim();
 
         if (action === 'add') {
             db.prepare('INSERT OR IGNORE INTO whitelist (char_name) VALUES (?)').run(name);
-            message.reply(`✅ **${name}** added to Whitelist.`);
+            await interaction.reply(`✅ **${name}** added to Whitelist.`);
         } else if (action === 'remove') {
             db.prepare('DELETE FROM whitelist WHERE char_name = ?').run(name);
-            message.reply(`🗑️ **${name}** removed from whitelist.`);
-        } else {
-            message.reply('❌ Unknown action. Use `add` or `remove`.');
+            await interaction.reply(`🗑️ **${name}** removed from whitelist.`);
         }
     },
 };
