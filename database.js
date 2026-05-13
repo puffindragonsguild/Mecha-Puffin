@@ -119,4 +119,24 @@ db.prepare(`
 `).run();
 console.log("💾 Stopwatch Memory Banks: ONLINE");
 
+// Oracle / Decree Memory Banks
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS oracle_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        channel_id TEXT,
+        last_message_id TEXT,
+        dreamscar_anchor_day INTEGER,
+        dreamscar_anchor_index INTEGER,
+        deepling_status TEXT,
+        deepling_last_updated INTEGER
+    )
+`).run();
+
+// Insert the default row if it doesn't exist
+db.prepare(`
+    INSERT OR IGNORE INTO oracle_state (id, dreamscar_anchor_day, dreamscar_anchor_index, deepling_status, deepling_last_updated) 
+    VALUES (1, 0, 0, 'Deepling not scouted', 0)
+`).run();
+console.log("🔮 Oracle Memory Banks: ONLINE");
+
 module.exports = db;
