@@ -1,11 +1,20 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
-    name: 'open',
-    description: 'Opens the raid gates.',
+    data: new SlashCommandBuilder()
+        .setName('open')
+        .setDescription('Opens the raid gates.')
+        .addStringOption(option => option.setName('type')
+            .setDescription('Raid Type')
+            .setRequired(true)
+            .addChoices(
+                { name: 'Double Trouble (LLK & HoD)', value: 'dt' },
+                { name: 'Ferumbras', value: 'feru' },
+                { name: 'Reserves Only', value: 'reserves' }
+            )),
     adminOnly: true,
-    execute(message, args, client, db, raidManager) {
-        const raidType = args[0]?.toLowerCase();
+    async execute(interaction, client, db, raidManager) {
+        const raidType = interaction.options.getString('type');
 
         if (raidType === 'dt') {
             raidManager.setGatesOpen(true);
@@ -27,8 +36,8 @@ module.exports = {
                 new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
             );
 
-            message.channel.send({ embeds: [dtEmbed], components: [row] });
-            raidManager.startHypeLoop(message, 'Double Trouble',db);
+            await interaction.reply({ embeds: [dtEmbed], components: [row] });
+            raidManager.startHypeLoop(interaction.channel, 'Double Trouble', db);
 
         } else if (raidType === 'feru') {
             raidManager.setGatesOpen(true);
@@ -47,18 +56,15 @@ module.exports = {
                 new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
             );
 
-            message.channel.send({ embeds: [feruEmbed], components: [row] });
-            raidManager.startHypeLoop(message, 'Ferumbras',db);
+            await interaction.reply({ embeds: [feruEmbed], components: [row] });
+            raidManager.startHypeLoop(interaction.channel, 'Ferumbras', db);
 
         } else if (raidType === 'reserves') {
             raidManager.setGatesOpen(true);
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LASTRESORT').setLabel('Last Resort').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
             );
-            message.channel.send({ content: '⚠️ **RESERVES OPEN** ⚠️', components: [row] });
-
-        } else {
-            message.reply('❌ Please specify a raid type: `!open dt`, `!open feru`, or `!open reserves`.');
+            await interaction.reply({ content: '⚠️ **RESERVES OPEN** ⚠️', components: [row] });
         }
     },
 };
