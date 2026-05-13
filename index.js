@@ -127,6 +127,22 @@ client.on('interactionCreate', async interaction => {
 // ---------------------------------------------------------
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
+        const btnId = interaction.customId;
+
+        // --- NEW: THE DROPOUT BUTTON TRAP ---
+        if (btnId === 'choice_DROPOUT') {
+            const existing = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all(interaction.user.id);
+            if (existing.length === 0) {
+                return interaction.reply({ content: "❌ You aren't signed up for anything!", flags: 64 }); // Ephemeral warning
+            }
+            
+            // Get their names and delete them
+            const names = existing.map(e => e.character_name).join(' and ');
+            db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(interaction.user.id);
+            
+            // Publicly shame them!
+            return interaction.reply(`🏃💨 **Cowardice has taken hold!** <@${interaction.user.id}> has withdrawn **${names}** from the raid roster. A spot has opened up!`);
+        }
         if (interaction.customId === 'dropout_btn') {
             const userId = interaction.user.id;
             const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
