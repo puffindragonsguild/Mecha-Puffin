@@ -11,9 +11,8 @@ function getTibiaDay() {
 
 // ⚔️ DROME MATH HELPER
 function getDromeStatus() {
-    // Anchor: May 6, 2026 was a known Drome reset day. 
-    const anchor = new Date(Date.UTC(2026, 4, 6, 8, 0, 0)); 
-    const now = new Date();
+    // Anchor: May 13, 2026 (Month is 4 because Javascript starts counting months at 0 for January!)
+    const anchor = new Date(Date.UTC(2026, 4, 13, 8, 0, 0));
     
     // Calculate how many days have passed since the anchor
     const diff = now.getTime() - anchor.getTime();
