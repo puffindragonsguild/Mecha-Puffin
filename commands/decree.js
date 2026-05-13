@@ -114,17 +114,23 @@ module.exports = {
         }
 
         else if (subcommand === 'report_board') {
-            const state = db.prepare('SELECT mini_world_changes FROM oracle_state WHERE id = 1').get();
+           const state = db.prepare('SELECT mini_world_changes FROM oracle_state WHERE id = 1').get();
             const activeMinis = state.mini_world_changes ? state.mini_world_changes.split('\n• ').map(s => s.replace('• ', '').trim()) : [];
             
-            const options = [
+            // Discord allows a maximum of 25 options! Here are the top 25.
+            const allMinis = [
                 'Yasir', 'Thornfire', 'River Runs Deep', 'Fury Gate', 'Grimvale', 
-                'Liquid Black', 'War Against the Hive', 'Master\'s Voice', 'Robson', 'Chakoya Iceberg'
-            ].map(name => {
+                'Liquid Black', 'War Against the Hive', 'Master\'s Voice', 'Robson', 
+                'Chakoya Iceberg', 'Horestis Tomb', 'Sea Serpent Spawn', 'Stampede', 
+                'Swamp Fever', 'Noodles is Gone', 'Bank Robbery', 'Arito\'s Task', 
+                'Bored', 'Down the Drain', 'Eclipse', 'Fire from the Earth', 
+                'Overhunting', 'Spider Swarm', 'Zomba', 'Kingsday'
+            ];
+
+            const options = allMinis.map(name => {
                 return new StringSelectMenuOptionBuilder()
                     .setLabel(name)
                     .setValue(name)
-                    // This remembers what was ticked yesterday!
                     .setDefault(activeMinis.includes(name)); 
             });
 
