@@ -1,11 +1,13 @@
+const { SlashCommandBuilder } = require('discord.js');
 const lotteryManager = require('../lotteryManager.js');
 
 module.exports = {
-    name: 'stoplottery',
-    description: 'Stops the weekly lottery announcements.',
+    data: new SlashCommandBuilder()
+        .setName('stoplottery')
+        .setDescription('Stops the weekly lottery announcements.'),
     adminOnly: true,
-    execute(message, args, client, db) {
+    async execute(interaction, client, db) {
         lotteryManager.stopLotteryLoop(db);
-        message.reply("🛑 **Lottery mechanism paused.** The accountants have gone to the tavern.");
+        await interaction.reply("🛑 **Lottery mechanism paused.** The accountants have gone to the tavern.");
     },
 };
