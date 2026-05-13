@@ -151,4 +151,44 @@ try {
 
 console.log("🔮 Oracle Memory Banks: ONLINE");
 
+// ---------------------------------------------------------
+// 📅 EVENT ORGANIZER (LFG) MEMORY BANKS
+// ---------------------------------------------------------
+// Table for saving server-wide settings (like the LFG channel)
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS server_settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT
+    )
+`).run();
+
+// Table for the actual events
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS lfg_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        creator_id TEXT,
+        type TEXT,
+        title TEXT,
+        time TEXT,
+        wiki_link TEXT,
+        extra_info TEXT,
+        channel_id TEXT,
+        message_id TEXT
+    )
+`).run();
+
+// Table for people joining those events
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS lfg_signups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER,
+        discord_user_id TEXT,
+        char_name TEXT,
+        vocation TEXT,
+        level INTEGER
+    )
+`).run();
+
+console.log("📅 Event Organizer Memory Banks: ONLINE");
+
 module.exports = db;
