@@ -28,7 +28,7 @@ module.exports = {
 
         if (action === 'add') {
             if (targetType === 'guild') {
-                if (category === 'alt' || category === 'friend') return interaction.reply({ content: '❌ Guilds can only be `friendly` or `naughty`.', ephemeral: true });
+                if (category === 'alt' || category === 'friend') return interaction.reply({ content: '❌ Guilds can only be `friendly` or `naughty`.', flags: MessageFlags.Ephemeral });
                 db.prepare('INSERT OR REPLACE INTO tracked_guilds (guild_name, type) VALUES (?, ?)').run(name, category.toUpperCase());
                 await interaction.reply(`✅ Guild **${name}** added to the **${category.toUpperCase()}** list.`);
             } else if (targetType === 'char') {
