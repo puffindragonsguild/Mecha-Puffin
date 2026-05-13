@@ -14,6 +14,7 @@ const raidManager = require('./raidManager.js');
 const radarManager = require('./radarManager.js');
 const lotteryManager = require('./lotteryManager.js');
 const oracleManager = require('./oracleManager.js');
+const lfgManager = require('./lfgManager.js'); // NEW LFG BRAIN
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
@@ -44,14 +45,9 @@ for (const file of commandFiles) {
 
 client.once('clientReady', async () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
-
-    // --- ORACLE ---
     oracleManager.triggerDailyLoop(client, db);
 
-    // --- AUTO-RESUME STATE RECOVERY ---
     const activeTasks = db.prepare('SELECT * FROM active_tasks').all();
-
-    // --- GATE CRASH RECOVERY ---
     const gateTask = db.prepare('SELECT * FROM active_tasks WHERE task_name = ?').get('GATES_OPEN');
     if (gateTask) {
         raidManager.setGatesOpen(true, db);
@@ -64,27 +60,21 @@ client.once('clientReady', async () => {
             if (!channel) continue;
 
             if (task.task_name === 'RADAR_FRIENDLY') {
-                console.log('🔄 Auto-resuming Friendly Radar...');
                 radarManager.startRadar(channel, db, 'FRIENDLY', true, task.extra_data);
             }
             else if (task.task_name === 'RADAR_NAUGHTY') {
-                console.log('🔄 Auto-resuming Naughty Radar...');
                 radarManager.startRadar(channel, db, 'NAUGHTY', true, task.extra_data);
             }
             else if (task.task_name === 'LOTTERY') {
-                console.log('🔄 Auto-resuming Lottery Loop...');
                 lotteryManager.startLotteryLoop(channel, db, true);
             }
             else if (task.task_name === 'RAID_HYPE') {
-                console.log(`🔄 Auto-resuming Raid Gates for ${task.extra_data}...`);
                 raidManager.startHypeLoop(channel, task.extra_data, db, true);
             }
-            
-        } catch (err) {
-            console.error(`⚠️ Failed to resume ${task.task_name}:`, err);
-        }
+        } catch (err) {}
     }
 });
+
 
 // ---------------------------------------------------------
 // 1. DYNAMIC SLASH COMMAND HANDLER
@@ -120,24 +110,22 @@ client.on('interactionCreate', async interaction => {
         const btnId = interaction.customId;
 
         // --- EVENT ORGANIZER BUTTON TRAPS (SPAWN MODALS) ---
-        if (interaction.customId.startsWith('lfg_btn_')) {
-            const lfgType = interaction.customId.replace('lfg_btn_', ''); // '5man', '10man', 'bane', or 'quest'
+        if (btnId.startsWith('lfg_btn_')) {
+            const lfgType = btnId.replace('lfg_btn_', ''); 
             
             const modal = new ModalBuilder()
                 .setCustomId(`modal_lfg_${lfgType}`)
                 .setTitle(`Organize: ${lfgType.toUpperCase()}`);
 
-            // Shared Inputs
             const charInput = new TextInputBuilder().setCustomId('lfgChar').setLabel("Your Character Name").setStyle(TextInputStyle.Short).setRequired(true);
             const titleInput = new TextInputBuilder().setCustomId('lfgTitle').setLabel(lfgType === 'quest' ? "Which Quest?" : "Which Boss?").setStyle(TextInputStyle.Short).setRequired(true);
-            const timeInput = new TextInputBuilder().setCustomId('lfgTime').setLabel("Date & Time (e.g., 20:00 CEST or 'In 10m')").setStyle(TextInputStyle.Short).setRequired(true);
+            const timeInput = new TextInputBuilder().setCustomId('lfgTime').setLabel("Date & Time (e.g. 20:00 CEST or 'In 10m')").setStyle(TextInputStyle.Short).setRequired(true);
             const infoInput = new TextInputBuilder().setCustomId('lfgInfo').setLabel(lfgType === 'quest' ? "Level Req / Mission stage?" : "Vocs Needed / Extra Info").setStyle(TextInputStyle.Paragraph).setRequired(false);
 
             const r1 = new ActionRowBuilder().addComponents(charInput);
             const r2 = new ActionRowBuilder().addComponents(titleInput);
             const r3 = new ActionRowBuilder().addComponents(timeInput);
             
-            // Quest gets the special Wiki link box
             if (lfgType === 'quest') {
                 const wikiInput = new TextInputBuilder().setCustomId('lfgWiki').setLabel("Wiki Link (Optional)").setStyle(TextInputStyle.Short).setRequired(false);
                 const rWiki = new ActionRowBuilder().addComponents(wikiInput);
@@ -151,7 +139,53 @@ client.on('interactionCreate', async interaction => {
             return interaction.showModal(modal);
         }
 
-        // --- THE ADVANCED DROPOUT BUTTON TRAP ---
+        // --- LFG ACTIONS (JOIN/LEAVE/DELETE) ---
+        if (btnId.startsWith('lfg_join_')) {
+            const eventId = btnId.replace('lfg_join_', '');
+            const existing = db.prepare('SELECT id FROM lfg_signups WHERE event_id = ? AND discord_user_id = ?').get(eventId, interaction.user.id);
+            if (existing) return interaction.reply({ content: "❌ You are already on the roster!", flags: MessageFlags.Ephemeral });
+
+            // Pop a quick modal to grab their character name
+            const modal = new ModalBuilder().setCustomId(`modal_lfgjoin_${eventId}`).setTitle('Join Event');
+            const charInput = new TextInputBuilder().setCustomId('lfgJoinChar').setLabel("Your Character Name").setStyle(TextInputStyle.Short).setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(charInput));
+            return interaction.showModal(modal);
+        }
+
+        if (btnId.startsWith('lfg_leave_')) {
+            const eventId = btnId.replace('lfg_leave_', '');
+            const existing = db.prepare('SELECT id, char_name FROM lfg_signups WHERE event_id = ? AND discord_user_id = ?').get(eventId, interaction.user.id);
+            if (!existing) return interaction.reply({ content: "❌ You aren't on this roster!", flags: MessageFlags.Ephemeral });
+
+            db.prepare('DELETE FROM lfg_signups WHERE id = ?').run(existing.id);
+            await interaction.reply({ content: `✅ **${existing.char_name}** has been removed from the event.`, flags: MessageFlags.Ephemeral });
+            lfgManager.updateLFGMessage(eventId, client, db);
+            return;
+        }
+
+        if (btnId.startsWith('lfg_delete_')) {
+            const eventId = btnId.replace('lfg_delete_', '');
+            const event = db.prepare('SELECT * FROM lfg_events WHERE id = ?').get(eventId);
+            if (!event) return interaction.reply({ content: "❌ Event already deleted.", flags: MessageFlags.Ephemeral });
+
+            const isAdmin = interaction.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
+            if (event.creator_id !== interaction.user.id && !isAdmin) {
+                return interaction.reply({ content: "🛑 Only the event creator or an Admin can delete this!", flags: MessageFlags.Ephemeral });
+            }
+
+            db.prepare('DELETE FROM lfg_events WHERE id = ?').run(eventId);
+            db.prepare('DELETE FROM lfg_signups WHERE event_id = ?').run(eventId);
+
+            try {
+                const msg = await interaction.channel.messages.fetch(event.message_id);
+                await msg.delete();
+            } catch (e) { }
+
+            return interaction.reply({ content: "✅ Event permanently deleted.", flags: MessageFlags.Ephemeral });
+        }
+
+
+        // --- THE ADVANCED DROPOUT BUTTON TRAP (RAIDS) ---
         if (btnId === 'choice_DROPOUT' || btnId === 'dropout_btn') {
             const userId = interaction.user.id;
             const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
@@ -172,9 +206,9 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: "🏃 Choose your exit strategy:", components: [new ActionRowBuilder().addComponents(selectMenu)], flags: MessageFlags.Ephemeral });
         }
 
-        if (interaction.customId.startsWith('choice_')) {
+        if (btnId.startsWith('choice_')) {
             if (!raidManager.isGatesOpen()) return interaction.reply({ content: messages.getRandom(messages.closedGates), flags: MessageFlags.Ephemeral });
-            const boss = interaction.customId.replace('choice_', '');
+            const boss = btnId.replace('choice_', '');
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`queue_MAIN_${boss}`).setLabel('Main Team').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
                 new ButtonBuilder().setCustomId(`queue_LASTRESORT_${boss}`).setLabel('Reserve Only').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
@@ -182,8 +216,8 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: `Signing up for **${boss}**. Choose status:`, components: [row], flags: MessageFlags.Ephemeral });
         }
 
-        if (interaction.customId.startsWith('queue_')) {
-            const [_, qType, boss] = interaction.customId.split('_');
+        if (btnId.startsWith('queue_')) {
+            const [_, qType, boss] = btnId.split('_');
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`mode_manual_${qType}_${boss}`).setLabel('Manual Message').setStyle(ButtonStyle.Primary).setEmoji('✍️'),
                 new ButtonBuilder().setCustomId(`mode_lazy_${qType}_${boss}`).setLabel('Lazy Option').setStyle(ButtonStyle.Secondary).setEmoji('😴')
@@ -191,8 +225,8 @@ client.on('interactionCreate', async interaction => {
             return interaction.update({ content: `Selected: **${qType === 'LASTRESORT' ? 'LAST RESORT' : 'MAIN'}**. Address the Queen?`, components: [row] });
         }
 
-        if (interaction.customId.startsWith('mode_')) {
-            const [_, mode, qType, boss] = interaction.customId.split('_');
+        if (btnId.startsWith('mode_')) {
+            const [_, mode, qType, boss] = btnId.split('_');
             const modal = new ModalBuilder().setCustomId(`modal_${mode}_${qType}_${boss}`).setTitle(mode === 'lazy' ? 'Lazy Entry' : 'Manual Entry');
             const nameInput = new TextInputBuilder().setCustomId('charName').setLabel("Character Name").setStyle(TextInputStyle.Short).setRequired(true);
             const rows = [new ActionRowBuilder().addComponents(nameInput)];
@@ -205,19 +239,17 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // --- THE ADVANCED DROPOUT SELECTION HANDLER ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
         const parts = interaction.values[0].split('_');
-        const action = parts[1]; // 'part' or 'full'
-        const targetBoss = parts[2]; // 'LLK', 'HOD', etc.
+        const action = parts[1]; 
+        const targetBoss = parts[2]; 
         const signupId = parts[3];
-        const charName = parts.slice(4).join('_'); // Reconstruct name if it has spaces
+        const charName = parts.slice(4).join('_');
 
         const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
         if (!signup) return interaction.update({ content: "❌ Error: Signup not found.", components: [] });
 
         let announcement = "";
-
         if (action === 'part') {
             const remain = targetBoss === 'LLK' ? 'HOD' : 'LLK';
             db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remain}` : remain, signupId);
@@ -227,17 +259,82 @@ client.on('interactionCreate', async interaction => {
             announcement = `🏃💨 **Cowardice has taken hold!** <@${interaction.user.id}> has fully withdrawn **${charName}** from the raid roster. A spot has opened up!`;
         }
         
-        // Update the ephemeral menu so it gracefully says "Processed" and removes the dropdown
         await interaction.update({ content: "✅ Withdrawal processed.", components: [] });
-        
-        // Publicly announce it to the channel!
         await interaction.channel.send(announcement);
-        
-        // Redraw the roster!
         raidManager.displayRoster(interaction.channel);
     }
 
     if (interaction.isModalSubmit()) {
+        // --- LFG CREATOR SUBMIT TRAP ---
+        if (interaction.customId.startsWith('modal_lfg_') && !interaction.customId.startsWith('modal_lfgjoin_')) {
+            const lfgType = interaction.customId.replace('modal_lfg_', '');
+            const charNameRaw = interaction.fields.getTextInputValue('lfgChar');
+            const title = interaction.fields.getTextInputValue('lfgTitle');
+            const time = interaction.fields.getTextInputValue('lfgTime');
+            let info = null;
+            try { info = interaction.fields.getTextInputValue('lfgInfo'); } catch(e){} // Optional
+            let wiki = null;
+            if (lfgType === 'quest') {
+                try { wiki = interaction.fields.getTextInputValue('lfgWiki'); } catch(e){} // Optional
+            }
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            
+            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(charNameRaw)}`);
+            const data = await res.json();
+            if (!data.character?.character?.name) return interaction.editReply(`❌ **${charNameRaw}** not found on Tibia.com.`);
+            const char = data.character.character;
+            
+            let vocAbbr = char.vocation.toUpperCase(); let vocEmoji = '❓';
+            if (vocAbbr.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
+            else if (vocAbbr.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
+            else if (vocAbbr.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
+            else if (vocAbbr.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
+
+            const channelId = db.prepare('SELECT setting_value FROM server_settings WHERE setting_key = ?').get('LFG_CHANNEL')?.setting_value;
+            if (!channelId) return interaction.editReply("❌ Organizer channel not set! Run `/organiser setup` in a channel first.");
+
+            const infoInsert = db.prepare('INSERT INTO lfg_events (creator_id, type, title, time, wiki_link, extra_info, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                .run(interaction.user.id, lfgType, title, time, wiki, info, channelId);
+            const eventId = infoInsert.lastInsertRowid;
+
+            db.prepare('INSERT INTO lfg_signups (event_id, discord_user_id, char_name, vocation, level) VALUES (?, ?, ?, ?, ?)')
+                .run(eventId, interaction.user.id, char.name, `${vocEmoji} ${vocAbbr}`, char.level);
+
+            await interaction.editReply(`✅ Event **${title}** created successfully!`);
+            lfgManager.updateLFGMessage(eventId, client, db);
+            return; // STOP EXECUTION HERE SO IT DOESN'T HIT RAID LOGIC
+        }
+
+        // --- LFG JOIN SUBMIT TRAP ---
+        if (interaction.customId.startsWith('modal_lfgjoin_')) {
+            const eventId = interaction.customId.replace('modal_lfgjoin_', '');
+            const charNameRaw = interaction.fields.getTextInputValue('lfgJoinChar');
+            
+            const existing = db.prepare('SELECT id FROM lfg_signups WHERE event_id = ? AND discord_user_id = ?').get(eventId, interaction.user.id);
+            if (existing) return interaction.reply({ content: "❌ You are already signed up!", flags: MessageFlags.Ephemeral });
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(charNameRaw)}`);
+            const data = await res.json();
+            if (!data.character?.character?.name) return interaction.editReply(`❌ **${charNameRaw}** not found on Tibia.com.`);
+            const char = data.character.character;
+            
+            let vocAbbr = char.vocation.toUpperCase(); let vocEmoji = '❓';
+            if (vocAbbr.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
+            else if (vocAbbr.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
+            else if (vocAbbr.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
+            else if (vocAbbr.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
+
+            db.prepare('INSERT INTO lfg_signups (event_id, discord_user_id, char_name, vocation, level) VALUES (?, ?, ?, ?, ?)')
+                .run(eventId, interaction.user.id, char.name, `${vocEmoji} ${vocAbbr}`, char.level);
+
+            await interaction.editReply(`✅ You have successfully joined the event!`);
+            lfgManager.updateLFGMessage(eventId, client, db);
+            return; // STOP EXECUTION HERE
+        }
+
+        // --- EXISTING RAID MODAL LOGIC ---
         const [_, mode, qType, bossChoice] = interaction.customId.split('_');
         const rawName = interaction.fields.getTextInputValue('charName');
         let queenMessage = mode === 'manual' ? interaction.fields.getTextInputValue('queenMessage') : messages.getRandom(messages.lazyQueenMessages);
@@ -256,16 +353,13 @@ client.on('interactionCreate', async interaction => {
             const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
             if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian.`);
 
-            // Determine exact choice based on Puffin status
             const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
             let finalChoice = (qType === 'LASTRESORT') ? 'LAST_RESORT' : (isPuffin || qType !== 'MAIN' ? bossChoice : `PUBLIC_${bossChoice}`);
 
-            // 🧠 SMART DUPLICATE CHECK
             const existingSignup = db.prepare('SELECT id, boss_choice FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
             
             if (existingSignup) {
                 const curr = existingSignup.boss_choice;
-                
                 if (curr === 'LAST_RESORT' || finalChoice === 'LAST_RESORT') {
                     return interaction.editReply(`❌ Already signed up! (Reserves apply to the entire raid night)`);
                 }
@@ -276,10 +370,8 @@ client.on('interactionCreate', async interaction => {
                 ) {
                     const newChoice = isPuffin ? 'BOTH' : 'PUBLIC_BOTH';
                     db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, existingSignup.id);
-                    
                     return interaction.editReply(`✅ <@${interaction.user.id}>, **${charName}** upgraded! You are now signed up for **BOTH** bosses!`);
                 }
-
                 return interaction.editReply(`❌ You are already signed up for this!`);
             }
             
@@ -289,7 +381,6 @@ client.on('interactionCreate', async interaction => {
             else if (rawVoc.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
             else if (rawVoc.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
             else if (rawVoc.includes('MONK')) { vocAbbr = 'EM'; vocEmoji = '🥋'; }
-
             if (charName === "Fortuna Felis") { vocEmoji = '👑'; }
 
             db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
