@@ -119,12 +119,11 @@ module.exports = {
             
             // Discord allows a maximum of 25 options! Here are the top 25.
             const allMinis = [
-                'Yasir', 'Thornfire', 'River Runs Deep', 'Fury Gate', 'Grimvale', 
-                'Liquid Black', 'War Against the Hive', 'Master\'s Voice', 'Robson', 
-                'Chakoya Iceberg', 'Horestis Tomb', 'Sea Serpent Spawn', 'Stampede', 
-                'Swamp Fever', 'Noodles is Gone', 'Bank Robbery', 'Arito\'s Task', 
-                'Bored', 'Down the Drain', 'Eclipse', 'Fire from the Earth', 
-                'Overhunting', 'Spider Swarm', 'Zomba', 'Kingsday'
+                'Fury Gates', 'Chakoya Iceberg', 'Poacher Cave - Game', 'Poacher Cave - Poachers', 'Poacher Cave - Gloom Wolves', 
+                'Hive Outpost', 'Jungle Camp', 'Nightmare Isles - North', 'Nightmare Isles - West', 
+                'Nightmare Isles - Ank', 'Grimvale', 'Stampede', 'Nomads', 
+                'Thawing', 'River Runs Deep', 'Noodles is Gone', 'Oriental Trader - Yasir', 'Fire from the Earth', 'Down the Drain', 'Bored', 
+                'Warpath', 'Devovorgas Essence', 'Spirit Gate - Darama', 'Spirit Gate - Ghostlands', 'Spirit Gate - Vengoth'
             ];
 
             const options = allMinis.map(name => {
