@@ -78,32 +78,31 @@ client.once('clientReady', async () => {
 
 
 // ---------------------------------------------------------
-// 1. DYNAMIC COMMAND HANDLER
+// 1. DYNAMIC SLASH COMMAND HANDLER
 // ---------------------------------------------------------
-client.on('messageCreate', async message => {
-    // Ignore bots and messages that don't start with our prefix "!"
-    if (message.author.bot || !message.content.startsWith('!')) return;
+client.on('interactionCreate', async interaction => {
+    // If it's a button or modal, ignore it here (your other code handles that below!)
+    if (!interaction.isChatInputCommand()) return;
 
-    // Split the message into the command name and its arguments
-    const args = message.content.slice(1).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
-
-    // Check if the command exists in our Collection
-    const command = client.commands.get(commandName);
+    const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
     // Admin Permission Check 🛡️
-    const isAdmin = message.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
+    const isAdmin = interaction.member?.roles.cache.some(role => role.name === ADMIN_ROLE_NAME);
     if (command.adminOnly && !isAdmin) {
-        return message.reply('🛑 **Halt!** The Queen forbids you from using this command.');
+        return interaction.reply({ content: '🛑 **Halt!** The Queen forbids you from using this command.', ephemeral: true });
     }
 
-    // Execute the command!
     try {
-        command.execute(message, args, client, db, raidManager);
+        await command.execute(interaction, client, db, raidManager);
     } catch (error) {
         console.error(error);
-        message.reply('⚠️ **Error:** A rogue mechanism broke while trying to execute that command!');
+        // Reply or editReply depending on if the bot already started "thinking"
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content: '⚠️ **Error:** A rogue mechanism broke while trying to execute that command!', ephemeral: true });
+        } else {
+            await interaction.reply({ content: '⚠️ **Error:** A rogue mechanism broke while trying to execute that command!', ephemeral: true });
+        }
     }
 });
 
