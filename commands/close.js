@@ -1,10 +1,13 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'close',
-    description: 'Closes the raid gates and stops the hype loop.',
+    data: new SlashCommandBuilder()
+        .setName('close')
+        .setDescription('Closes the raid gates and stops the hype loop.'),
     adminOnly: true,
-    execute(message, args, client, db, raidManager) {
+    async execute(interaction, client, db, raidManager) {
         raidManager.setGatesOpen(false);
         raidManager.stopHypeLoop(db);
-        message.reply('🛑 **The gates are now CLOSED.**');
+        await interaction.reply('🛑 **The gates are now CLOSED.**');
     },
 };
