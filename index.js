@@ -109,7 +109,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const btnId = interaction.customId;
 
-        // --- EVENT ORGANIZER BUTTON TRAPS (SPAWN MODALS) ---
+                // --- EVENT ORGANIZER BUTTON TRAPS (SPAWN MODALS) ---
         if (btnId.startsWith('lfg_btn_')) {
             const lfgType = btnId.replace('lfg_btn_', ''); 
             
@@ -118,9 +118,19 @@ client.on('interactionCreate', async interaction => {
                 .setTitle(`Organize: ${lfgType.toUpperCase()}`);
 
             const charInput = new TextInputBuilder().setCustomId('lfgChar').setLabel("Your Character Name").setStyle(TextInputStyle.Short).setRequired(true);
-            const titleInput = new TextInputBuilder().setCustomId('lfgTitle').setLabel(lfgType === 'quest' ? "Which Quest?" : "Which Boss?").setStyle(TextInputStyle.Short).setRequired(true);
-            const timeInput = new TextInputBuilder().setCustomId('lfgTime').setLabel("Date & Time (e.g. 20:00 CEST or 'In 10m')").setStyle(TextInputStyle.Short).setRequired(true);
-            const infoInput = new TextInputBuilder().setCustomId('lfgInfo').setLabel(lfgType === 'quest' ? "Level Req / Mission stage?" : "Vocs Needed / Extra Info").setStyle(TextInputStyle.Paragraph).setRequired(false);
+            
+            let titleLabel = "Which Boss?";
+            if (lfgType === 'quest') titleLabel = "Which Quest?";
+            if (lfgType === 'hunt') titleLabel = "Which Spawn?";
+            const titleInput = new TextInputBuilder().setCustomId('lfgTitle').setLabel(titleLabel).setStyle(TextInputStyle.Short).setRequired(true);
+            
+            let timeLabel = "Date & Time (e.g. 20:00 CEST)";
+            if (lfgType === 'hunt') timeLabel = "Date, Time & Duration";
+            const timeInput = new TextInputBuilder().setCustomId('lfgTime').setLabel(timeLabel).setStyle(TextInputStyle.Short).setRequired(true);
+            
+            let infoLabel = "Vocs Needed / Extra Info";
+            if (lfgType === 'quest') infoLabel = "Level Req / Mission stage?";
+            const infoInput = new TextInputBuilder().setCustomId('lfgInfo').setLabel(infoLabel).setStyle(TextInputStyle.Paragraph).setRequired(false);
 
             const r1 = new ActionRowBuilder().addComponents(charInput);
             const r2 = new ActionRowBuilder().addComponents(titleInput);
@@ -128,16 +138,17 @@ client.on('interactionCreate', async interaction => {
             
             if (lfgType === 'quest') {
                 const wikiInput = new TextInputBuilder().setCustomId('lfgWiki').setLabel("Wiki Link (Optional)").setStyle(TextInputStyle.Short).setRequired(false);
-                const rWiki = new ActionRowBuilder().addComponents(wikiInput);
-                const r4 = new ActionRowBuilder().addComponents(infoInput);
-                modal.addComponents(r1, r2, rWiki, r3, r4);
+                modal.addComponents(r1, r2, new ActionRowBuilder().addComponents(wikiInput), r3, new ActionRowBuilder().addComponents(infoInput));
+            } else if (lfgType === 'hunt') {
+                const sizeInput = new TextInputBuilder().setCustomId('lfgSize').setLabel("Team Size (e.g. 4)").setStyle(TextInputStyle.Short).setRequired(true);
+                modal.addComponents(r1, r2, r3, new ActionRowBuilder().addComponents(sizeInput), new ActionRowBuilder().addComponents(infoInput));
             } else {
-                const r4 = new ActionRowBuilder().addComponents(infoInput);
-                modal.addComponents(r1, r2, r3, r4);
+                modal.addComponents(r1, r2, r3, new ActionRowBuilder().addComponents(infoInput));
             }
 
             return interaction.showModal(modal);
         }
+
 
         // --- LFG ACTIONS (JOIN/LEAVE/DELETE) ---
         if (btnId.startsWith('lfg_join_')) {
@@ -265,17 +276,25 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit()) {
-        // --- LFG CREATOR SUBMIT TRAP ---
+                // --- LFG CREATOR SUBMIT TRAP ---
         if (interaction.customId.startsWith('modal_lfg_') && !interaction.customId.startsWith('modal_lfgjoin_')) {
             const lfgType = interaction.customId.replace('modal_lfg_', '');
             const charNameRaw = interaction.fields.getTextInputValue('lfgChar');
             const title = interaction.fields.getTextInputValue('lfgTitle');
             const time = interaction.fields.getTextInputValue('lfgTime');
+            
             let info = null;
-            try { info = interaction.fields.getTextInputValue('lfgInfo'); } catch(e){} // Optional
+            try { info = interaction.fields.getTextInputValue('lfgInfo'); } catch(e){} 
+            
             let wiki = null;
-            if (lfgType === 'quest') {
-                try { wiki = interaction.fields.getTextInputValue('lfgWiki'); } catch(e){} // Optional
+            if (lfgType === 'quest') { try { wiki = interaction.fields.getTextInputValue('lfgWiki'); } catch(e){} }
+            
+            let maxPlayers = null;
+            if (lfgType === 'hunt') {
+                try { 
+                    maxPlayers = parseInt(interaction.fields.getTextInputValue('lfgSize'), 10); 
+                    if (isNaN(maxPlayers) || maxPlayers < 1) maxPlayers = 4; 
+                } catch(e){ maxPlayers = 4; } 
             }
 
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -291,11 +310,16 @@ client.on('interactionCreate', async interaction => {
             else if (vocAbbr.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
             else if (vocAbbr.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
 
-            const channelId = db.prepare('SELECT setting_value FROM server_settings WHERE setting_key = ?').get('LFG_CHANNEL')?.setting_value;
-            if (!channelId) return interaction.editReply("❌ Organizer channel not set! Run `/organiser setup` in a channel first.");
+            // CHANNEL ROUTING
+            let targetSetting = 'LFG_CHANNEL_BOSS';
+            if (lfgType === 'quest') targetSetting = 'LFG_CHANNEL_QUEST';
+            if (lfgType === 'hunt') targetSetting = 'LFG_CHANNEL_HUNT';
 
-            const infoInsert = db.prepare('INSERT INTO lfg_events (creator_id, type, title, time, wiki_link, extra_info, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                .run(interaction.user.id, lfgType, title, time, wiki, info, channelId);
+            const channelId = db.prepare('SELECT setting_value FROM server_settings WHERE setting_key = ?').get(targetSetting)?.setting_value;
+            if (!channelId) return interaction.editReply(`❌ Organizer channel for ${targetSetting.replace('LFG_CHANNEL_', '')} not set! Ask an Admin to run \`/organiser setup\`!`);
+
+            const infoInsert = db.prepare('INSERT INTO lfg_events (creator_id, type, title, time, wiki_link, extra_info, channel_id, max_players) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(interaction.user.id, lfgType, title, time, wiki, info, channelId, maxPlayers);
             const eventId = infoInsert.lastInsertRowid;
 
             db.prepare('INSERT INTO lfg_signups (event_id, discord_user_id, char_name, vocation, level) VALUES (?, ?, ?, ?, ?)')
@@ -303,8 +327,9 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply(`✅ Event **${title}** created successfully!`);
             lfgManager.updateLFGMessage(eventId, client, db);
-            return; // STOP EXECUTION HERE SO IT DOESN'T HIT RAID LOGIC
+            return; 
         }
+
 
         // --- LFG JOIN SUBMIT TRAP ---
         if (interaction.customId.startsWith('modal_lfgjoin_')) {
