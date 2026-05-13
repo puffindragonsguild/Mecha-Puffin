@@ -191,4 +191,12 @@ db.prepare(`
 
 console.log("📅 Event Organizer Memory Banks: ONLINE");
 
+// Upgrade LFG Memory to include variable Max Players
+try {
+    db.prepare('ALTER TABLE lfg_events ADD COLUMN max_players INTEGER').run();
+} catch (e) {
+    // Safely ignore if the column already exists!
+}
+
+
 module.exports = db;
