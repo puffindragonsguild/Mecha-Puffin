@@ -284,7 +284,6 @@ client.login(process.env.DISCORD_TOKEN);
     } else {
         console.log(`[WARNING] The command at ${filePath} is missing a required property.`);
     }
-}
 
 client.once('clientReady', async () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
