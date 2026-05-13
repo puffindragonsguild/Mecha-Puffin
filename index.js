@@ -13,6 +13,7 @@ const db = require('./database.js');
 const raidManager = require('./raidManager.js');
 const radarManager = require('./radarManager.js');
 const lotteryManager = require('./lotteryManager.js');
+const oracleManager = require('./oracleManager.js');
 
 
 const client = new Client({ 
@@ -48,6 +49,9 @@ for (const file of commandFiles) {
 
 client.once('clientReady', async () => {
     console.log('🤖 PuffinBot Engine is ONLINE!');
+
+    // --- ORACLE ---
+    oracleManager.triggerDailyLoop(client, db);
 
     // --- AUTO-RESUME STATE RECOVERY ---
     const activeTasks = db.prepare('SELECT * FROM active_tasks').all();
