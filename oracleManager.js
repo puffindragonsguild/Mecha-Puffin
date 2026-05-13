@@ -80,19 +80,15 @@ async function postOrUpdateDecree(channel, db) {
         embed.setThumbnail(data.bossImg);
     }
 
-    // Try to edit the existing message for today, otherwise post a new one
+    // Always overwrite the permanent Decree message to keep the channel clean
     try {
         if (state.last_message_id) {
             const oldMsg = await channel.messages.fetch(state.last_message_id);
-            // If the old message is from a previous day, let it stay in history and send a fresh one
-            const msgTibiaDay = Math.floor((oldMsg.createdTimestamp - (10 * 60 * 60 * 1000)) / (1000 * 60 * 60 * 24));
-            if (msgTibiaDay === currentTibiaDay) {
-                await oldMsg.edit({ embeds: [embed] });
-                return;
-            }
+            await oldMsg.edit({ embeds: [embed] });
+            return; // Successfully updated the permanent message!
         }
     } catch (e) {
-        // Message was deleted or not found, just post a new one below
+        // If the message was accidentally deleted by an admin, the bot will fall through and print a new one.
     }
 
     const newMsg = await channel.send({ embeds: [embed] });
