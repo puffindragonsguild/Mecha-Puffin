@@ -6,15 +6,16 @@ async function updateLFGMessage(eventId, client, db) {
 
     const signups = db.prepare('SELECT * FROM lfg_signups WHERE event_id = ?').all(eventId);
 
-    let maxPlayers = 5;
-    let color = 0x3498db; // Default Blue
+    let maxPlayers = event.max_players; 
+    let color = 0x3498db; 
     let typeLabel = "Event";
 
     // Set player caps and colors based on event type
-    if (event.type === '5man') { maxPlayers = 5; typeLabel = "5-Man Boss"; color = 0x3498db; }
-    else if (event.type === '10man') { maxPlayers = 10; typeLabel = "10-Man Boss"; color = 0x2ecc71; }
-    else if (event.type === 'bane') { maxPlayers = 5; typeLabel = "Bane Boss"; color = 0xe74c3c; }
-    else if (event.type === 'quest') { maxPlayers = 15; typeLabel = "Quest Run"; color = 0x9b59b6; }
+    if (event.type === '5man') { typeLabel = "5-Man Boss"; color = 0x3498db; if (!maxPlayers) maxPlayers = 5; }
+    else if (event.type === '10man') { typeLabel = "10-Man Boss"; color = 0x2ecc71; if (!maxPlayers) maxPlayers = 10; }
+    else if (event.type === 'bossrun') { typeLabel = "Boss Run"; color = 0xe74c3c; if (!maxPlayers) maxPlayers = 5; }
+    else if (event.type === 'quest') { typeLabel = "Quest Run"; color = 0x9b59b6; if (!maxPlayers) maxPlayers = 15; }
+    else if (event.type === 'hunt') { typeLabel = "Team Hunt"; color = 0xf1c40f; if (!maxPlayers) maxPlayers = 4; }
 
     const isFull = signups.length >= maxPlayers;
 
@@ -60,7 +61,6 @@ async function updateLFGMessage(eventId, client, db) {
             await msg.edit({ embeds: [embed], components: [row] });
         } else {
             const msg = await channel.send({ content: `📣 <@${event.creator_id}> is organizing a **${typeLabel}**!`, embeds: [embed], components: [row] });
-            // Save the message ID so we can edit it later
             db.prepare('UPDATE lfg_events SET message_id = ? WHERE id = ?').run(msg.id, eventId);
         }
     } catch (e) {
