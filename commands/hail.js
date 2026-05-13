@@ -1,8 +1,11 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'hail',
-    description: 'Praise the Queen!',
+    data: new SlashCommandBuilder()
+        .setName('hail')
+        .setDescription('Praise the Queen!'),
     adminOnly: false, // Anyone can use this
-    execute(message, args) {
-        message.reply('HAIL FORTUNA FELIS! 👑');
+    async execute(interaction) {
+        await interaction.reply('HAIL FORTUNA FELIS! 👑');
     },
 };
