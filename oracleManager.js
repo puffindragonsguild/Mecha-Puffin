@@ -2,27 +2,43 @@ const { EmbedBuilder } = require('discord.js');
 
 const DREAMSCAR_BOSSES = ["Plagueroot", "Malofur Mangrinder", "Maxxenius", "Alptramun", "Izcandar"];
 
-// Helper: Tibia days reset at Server Save (~10:00 AM CEST).
+// Helper: Tibia server save is 10:00 CE(S)T (08:00 UTC). 
+// Subtracting 8 hours from UTC makes the "day" roll over perfectly at Server Save!
 function getTibiaDay() {
     const now = new Date();
-    now.setUTCHours(now.getUTCHours() - 10);
+    now.setUTCHours(now.getUTCHours() - 8);
     return Math.floor(now.getTime() / (1000 * 60 * 60 * 24));
 }
 
-// ⚔️ DROME MATH HELPER
+// 🐪 RASHID MATH HELPER
+function getRashidLocation() {
+    const now = new Date();
+    now.setUTCHours(now.getUTCHours() - 8);
+    const day = now.getUTCDay(); // 0 = Sunday, 1 = Monday
+    const locations = [
+        "Carlin (Depot)",       // 0 - Sunday
+        "Svargrond (Tavern)",   // 1 - Monday
+        "Liberty Bay (Tavern)", // 2 - Tuesday
+        "Port Hope (Tavern)",   // 3 - Wednesday
+        "Ankrahmun (Tavern)",   // 4 - Thursday
+        "Darashia (Tavern)",    // 5 - Friday
+        "Edron (Tavern)"        // 6 - Saturday
+    ];
+    return locations[day];
+}
+
+// 🏟️ DROME MATH HELPER
 function getDromeStatus() {
-    // Anchor: May 13, 2026 (Month is 4 because Javascript starts counting months at 0 for January!)
-    const anchor = new Date(Date.UTC(2026, 4, 13, 8, 0, 0));
+    // Anchor: May 13, 2026 (Month is 4 because JS counts Jan as 0)
+    const anchor = new Date(Date.UTC(2026, 4, 13, 8, 0, 0)); 
+    const now = new Date();
     
-    // Calculate how many days have passed since the anchor
     const diff = now.getTime() - anchor.getTime();
     const daysPassed = Math.floor(diff / (1000 * 60 * 60 * 24));
     
-    // A Drome rotation is 14 days
     const daysIntoRotation = daysPassed % 14;
     const daysLeft = 14 - daysIntoRotation;
     
-    // Calculate the exact date it ends
     const endDate = new Date(anchor.getTime() + ((daysPassed + daysLeft) * 24 * 60 * 60 * 1000));
     const dd = String(endDate.getUTCDate()).padStart(2, '0');
     const mm = String(endDate.getUTCMonth() + 1).padStart(2, '0');
@@ -46,12 +62,14 @@ async function fetchOracleData() {
         const boostedCreature = boostedCreatureRes.creatures?.boosted?.name || "Unknown";
         const creatureImg = boostedCreatureRes.creatures?.boosted?.image_url || null;
         
-        const worldChanges = worldRes.world?.world_quests?.join('\n• ') || "None active";
+        let worldChanges = "None active";
+        if (worldRes.world?.world_quests?.length > 0) {
+            worldChanges = '• ' + worldRes.world.world_quests.join('\n• ');
+        }
         
         let newsText = "";
         if (newsRes.news && newsRes.news.length > 0) {
             const topNews = newsRes.news.slice(0, 3);
-            // 🐛 FIXED: The API calls the title "news", not "news_title"!
             newsText = topNews.map(n => `• [${n.news}](${n.url})`).join('\n');
         } else {
             newsText = "No recent news.";
@@ -71,13 +89,13 @@ async function postOrUpdateDecree(channel, db) {
     const state = db.prepare('SELECT * FROM oracle_state WHERE id = 1').get();
     const currentTibiaDay = getTibiaDay();
 
-    // 1. Dreamscar Math
+    // 1. Dreamscar
     const daysPassed = currentTibiaDay - state.dreamscar_anchor_day;
     const currentDreamscarIndex = (state.dreamscar_anchor_index + daysPassed) % 5;
     const finalIndex = currentDreamscarIndex < 0 ? currentDreamscarIndex + 5 : currentDreamscarIndex;
     const dreamscarBoss = DREAMSCAR_BOSSES[finalIndex];
 
-    // 2. Deepling Reset Logic
+    // 2. Deepling
     let currentDeepling = state.deepling_status;
     if (state.deepling_last_updated !== currentTibiaDay) {
         currentDeepling = "Deepling not scouted";
@@ -85,8 +103,18 @@ async function postOrUpdateDecree(channel, db) {
           .run(currentDeepling, currentTibiaDay);
     }
 
-    // 3. Drome Logic
-    const dromeStatus = getDromeStatus();
+    // 3. Mini World Changes Math
+    const daysSinceMini = currentTibiaDay - (state.mini_updated_at || 0);
+    let miniUpdateText = "";
+    if (!state.mini_updated_at) {
+        miniUpdateText = "*(Not reported yet)*";
+    } else if (daysSinceMini === 0) {
+        miniUpdateText = "*(Updated: Today)*";
+    } else if (daysSinceMini === 1) {
+        miniUpdateText = "*(Updated: Yesterday)*";
+    } else {
+        miniUpdateText = `*(Updated: ${daysSinceMini} days ago)*`;
+    }
 
     const embed = new EmbedBuilder()
         .setTitle("📜 The Queen's Daily Decree")
@@ -95,30 +123,25 @@ async function postOrUpdateDecree(channel, db) {
         .addFields(
             { name: "⚔️ Bosses", value: `**Boosted Boss:** ${data.boostedBoss}\n**Dreamscar:** ${dreamscarBoss}\n**Deepling:** ${currentDeepling}` },
             { name: "✨ Boosted Creature", value: data.boostedCreature },
-            { name: "🌍 Active World Changes", value: `• ${data.worldChanges}\n\n**Tibia Drome Rotation:**\n${dromeStatus}` },
+            { name: "🌍 Active World Changes (Peloria)", value: `**Major:**\n${data.worldChanges}\n\n**Mini:** ${miniUpdateText}\n${state.mini_world_changes || "None active"}` },
+            { name: "🎉 Active Events", value: state.active_events || "None active" },
+            { name: "🐪 Rashid", value: getRashidLocation() },
+            { name: "🏟️ Tibia Drome Rotation", value: getDromeStatus() },
             { name: "📰 Tibia News Digest", value: data.newsText }
         )
         .setFooter({ text: "Hail Fortuna Felis! | Updates at Server Save" })
         .setTimestamp();
 
-    // 🖼️ The Visual Wow: Boss in the top right, Creature at the bottom!
-    if (data.bossImg) {
-        embed.setThumbnail(data.bossImg);
-    }
-    if (data.creatureImg) {
-        embed.setImage(data.creatureImg);
-    }
+    if (data.bossImg) embed.setThumbnail(data.bossImg);
+    if (data.creatureImg) embed.setImage(data.creatureImg);
 
-    // Always overwrite the permanent Decree message to keep the channel clean
     try {
         if (state.last_message_id) {
             const oldMsg = await channel.messages.fetch(state.last_message_id);
             await oldMsg.edit({ embeds: [embed] });
             return; 
         }
-    } catch (e) {
-        // Message was deleted, print a new one
-    }
+    } catch (e) { }
 
     const newMsg = await channel.send({ embeds: [embed] });
     db.prepare('UPDATE oracle_state SET last_message_id = ? WHERE id = 1').run(newMsg.id);
@@ -128,11 +151,8 @@ function triggerDailyLoop(client, db) {
     setInterval(async () => {
         const state = db.prepare('SELECT * FROM oracle_state WHERE id = 1').get();
         if (!state.channel_id) return; 
-        
         const channel = await client.channels.fetch(state.channel_id).catch(() => null);
-        if (!channel) return;
-
-        postOrUpdateDecree(channel, db);
+        if (channel) postOrUpdateDecree(channel, db);
     }, 10 * 60 * 1000);
 }
 
