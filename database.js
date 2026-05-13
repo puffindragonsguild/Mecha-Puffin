@@ -110,4 +110,13 @@ db.prepare(`
 `).run();
 console.log("💾 Alert Memory Banks: ONLINE");
 
+// Scout Stopwatch Table
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS online_timers (
+        char_name TEXT PRIMARY KEY,
+        spotted_at INTEGER
+    )
+`).run();
+console.log("💾 Stopwatch Memory Banks: ONLINE");
+
 module.exports = db;
