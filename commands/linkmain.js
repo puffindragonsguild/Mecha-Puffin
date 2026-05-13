@@ -1,21 +1,21 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'linkmain',
-    description: 'Links a Main Character to a Discord User.',
+    data: new SlashCommandBuilder()
+        .setName('linkmain')
+        .setDescription('Links a Main Character to a Discord User.')
+        .addUserOption(option => option.setName('user').setDescription('The Discord user').setRequired(true))
+        .addStringOption(option => option.setName('character').setDescription('The exact character name').setRequired(true)),
     adminOnly: true,
-    execute(message, args, client, db) {
-        const mentionedUser = message.mentions.users.first();
-        if (!mentionedUser) return message.reply("❌ You must mention a user! Example: `!linkmain @User Player Name`");
+    async execute(interaction, client, db) {
+        const targetUser = interaction.options.getUser('user');
+        const charName = interaction.options.getString('character').trim();
 
-        // Strip the @mention to get just the character name
-        const charName = args.filter(arg => !arg.startsWith('<@')).join(' ').trim();
-        if (!charName) return message.reply("❌ Please provide a character name. Example: `!linkmain @User Player Name`");
-
-        // For a main character, the 'main_char' is just their own name
         db.prepare(`
             INSERT OR REPLACE INTO trackers (character_name, discord_user_id, main_char, tracker_type) 
             VALUES (?, ?, ?, 'PUFFIN')
-        `).run(charName, mentionedUser.id, charName);
+        `).run(charName, targetUser.id, charName);
 
-        message.reply(`✅ **Main Linked:** **${charName}** is now tied to <@${mentionedUser.id}>.`);
+        await interaction.reply(`✅ **Main Linked:** **${charName}** is now tied to <@${targetUser.id}>.`);
     },
 };
