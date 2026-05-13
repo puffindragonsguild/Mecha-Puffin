@@ -1,9 +1,12 @@
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'clear',
-    description: 'Wipes the raid roster clean.',
+    data: new SlashCommandBuilder()
+        .setName('clear')
+        .setDescription('Wipes the raid roster clean.'),
     adminOnly: true,
-    execute(message, args, client, db) {
+    async execute(interaction, client, db) {
         db.prepare('DELETE FROM signups').run();
-        message.reply('🧹 **Roster wiped clean!**');
+        await interaction.reply('🧹 **Roster wiped clean!**');
     },
 };
