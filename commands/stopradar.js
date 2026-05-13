@@ -1,16 +1,22 @@
+const { SlashCommandBuilder } = require('discord.js');
 const radarManager = require('../radarManager.js');
 
 module.exports = {
-    name: 'stopradar',
-    description: 'Stops the live radar. Usage: !stopradar friendly OR !stopradar naughty',
+    data: new SlashCommandBuilder()
+        .setName('stopradar')
+        .setDescription('Stops the live radar.')
+        .addStringOption(option => 
+            option.setName('type')
+                .setDescription('Which radar to stop?')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Friendly (Puffins & Allies)', value: 'friendly' },
+                    { name: 'Naughty (Enemies)', value: 'naughty' }
+                )),
     adminOnly: true,
-    execute(message, args, client, db) {
-        const type = args[0]?.toLowerCase();
-        if (type !== 'friendly' && type !== 'naughty') {
-            return message.reply('❌ Please specify which radar: `!stopradar friendly` or `!stopradar naughty`');
-        }
-
+    async execute(interaction, client, db) {
+        const type = interaction.options.getString('type');
         radarManager.stopRadar(db, type);
-        message.reply(`🛑 **${type.toUpperCase()} Radar Deactivated.**`);
+        await interaction.reply(`🛑 **${type.toUpperCase()} Radar Deactivated.**`);
     },
 };
