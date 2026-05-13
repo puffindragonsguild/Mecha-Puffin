@@ -1,16 +1,22 @@
+const { SlashCommandBuilder } = require('discord.js');
 const radarManager = require('../radarManager.js');
 
 module.exports = {
-    name: 'startradar',
-    description: 'Starts the live radar. Usage: !startradar friendly OR !startradar naughty',
+    data: new SlashCommandBuilder()
+        .setName('startradar')
+        .setDescription('Starts the live radar.')
+        .addStringOption(option => 
+            option.setName('type')
+                .setDescription('Which radar to start?')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Friendly (Puffins & Allies)', value: 'friendly' },
+                    { name: 'Naughty (Enemies)', value: 'naughty' }
+                )),
     adminOnly: true,
-    execute(message, args, client, db) {
-        const type = args[0]?.toLowerCase();
-        if (type !== 'friendly' && type !== 'naughty') {
-            return message.reply('❌ Please specify which radar: `!startradar friendly` or `!startradar naughty`');
-        }
-
-        message.reply(`📡 **${type.toUpperCase()} Radar Activated!** The Queen's scouts are watching.`);
-        radarManager.startRadar(message.channel, db, type);
+    async execute(interaction, client, db) {
+        const type = interaction.options.getString('type');
+        await interaction.reply(`📡 **${type.toUpperCase()} Radar Activated!** The Queen's scouts are watching.`);
+        radarManager.startRadar(interaction.channel, db, type);
     },
 };
