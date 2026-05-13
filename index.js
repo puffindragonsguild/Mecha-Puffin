@@ -86,7 +86,6 @@ client.once('clientReady', async () => {
     }
 });
 
-
 // ---------------------------------------------------------
 // 1. DYNAMIC SLASH COMMAND HANDLER
 // ---------------------------------------------------------
@@ -120,23 +119,25 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const btnId = interaction.customId;
 
-        // --- THE DROPOUT BUTTON TRAP ---
+        // --- THE ADVANCED DROPOUT BUTTON TRAP ---
         if (btnId === 'choice_DROPOUT' || btnId === 'dropout_btn') {
-            const existing = db.prepare('SELECT character_name FROM signups WHERE discord_user_id = ?').all(interaction.user.id);
-            if (existing.length === 0) {
-                return interaction.reply({ content: "❌ You aren't signed up for anything!", flags: MessageFlags.Ephemeral }); 
-            }
+            const userId = interaction.user.id;
+            const userSignups = db.prepare('SELECT id, character_name, boss_choice FROM signups WHERE discord_user_id = ?').all(userId);
+            if (userSignups.length === 0) return interaction.reply({ content: "❌ You aren't signed up for anything!", flags: MessageFlags.Ephemeral });
             
-            // Get their names and delete them
-            const names = existing.map(e => e.character_name).join(' and ');
-            db.prepare('DELETE FROM signups WHERE discord_user_id = ?').run(interaction.user.id);
-            
-            // Publicly shame them!
-            await interaction.reply(`🏃💨 **Cowardice has taken hold!** <@${interaction.user.id}> has withdrawn **${names}** from the raid roster. A spot has opened up!`);
-            
-            // Re-draw the roster so their name actually vanishes!
-            raidManager.displayRoster(interaction.channel);
-            return;
+            const selectMenu = new StringSelectMenuBuilder().setCustomId('dropout_select').setPlaceholder('Select exit...');
+            userSignups.forEach(s => {
+                if (s.boss_choice.includes('BOTH')) {
+                    selectMenu.addOptions(
+                        { label: `${s.character_name} (Drop LLK)`, value: `drop_part_LLK_${s.id}_${s.character_name}` }, 
+                        { label: `${s.character_name} (Drop HoD)`, value: `drop_part_HOD_${s.id}_${s.character_name}` }, 
+                        { label: `${s.character_name} (Drop All)`, value: `drop_full_BOTH_${s.id}_${s.character_name}` }
+                    );
+                } else {
+                    selectMenu.addOptions({ label: `${s.character_name} (${s.boss_choice.replace('PUBLIC_', '')})`, value: `drop_full_${s.boss_choice}_${s.id}_${s.character_name}` });
+                }
+            });
+            return interaction.reply({ content: "🏃 Choose your exit strategy:", components: [new ActionRowBuilder().addComponents(selectMenu)], flags: MessageFlags.Ephemeral });
         }
 
         if (interaction.customId.startsWith('choice_')) {
@@ -172,93 +173,22 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // --- THE ADVANCED DROPOUT SELECTION HANDLER ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'dropout_select') {
         const parts = interaction.values[0].split('_');
-        const signupId = parts[parts.length - 1];
+        const action = parts[1]; // 'part' or 'full'
+        const targetBoss = parts[2]; // 'LLK', 'HOD', etc.
+        const signupId = parts[3];
+        const charName = parts.slice(4).join('_'); // Reconstruct name if it has spaces
+
         const signup = db.prepare('SELECT * FROM signups WHERE id = ?').get(signupId);
-        if (!signup) return interaction.update({ content: "Error.", components: [] });
+        if (!signup) return interaction.update({ content: "❌ Error: Signup not found.", components: [] });
 
-        if (parts[1] === 'part') {
-            const remain = parts[2] === 'LLK' ? 'HOD' : 'LLK';
+        let announcement = "";
+
+        if (action === 'part') {
+            const remain = targetBoss === 'LLK' ? 'HOD' : 'LLK';
             db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(signup.boss_choice.includes('PUBLIC') ? `PUBLIC_${remain}` : remain, signupId);
+            announcement = `🏃💨 <@${interaction.user.id}> has partially withdrawn **${charName}** from the **${targetBoss}** raid!`;
         } else {
-            db.prepare('DELETE FROM signups WHERE id = ?').run(signupId);
-        }
-        await interaction.update({ content: "Processed.", components: [] });
-        
-        raidManager.displayRoster(interaction.channel);
-    }
-
-    if (interaction.isModalSubmit()) {
-        const [_, mode, qType, bossChoice] = interaction.customId.split('_');
-        const rawName = interaction.fields.getTextInputValue('charName');
-        let queenMessage = mode === 'manual' ? interaction.fields.getTextInputValue('queenMessage') : messages.getRandom(messages.lazyQueenMessages);
-
-        if (mode === 'manual' && (!queenMessage || queenMessage.trim() === "")) {
-            return interaction.reply({ content: "❌ Absolutely not! Address the Queen properly!", flags: MessageFlags.Ephemeral });
-        }
-
-        await interaction.deferReply();
-        try {
-            const res = await fetch(`https://api.tibiadata.com/v4/character/${encodeURIComponent(rawName)}`);
-            const data = await res.json();
-            if (!data.character?.character?.name) return interaction.editReply(`❌ **${rawName}** not found.`);
-            
-            const char = data.character.character;
-            const charName = char.name; const charLevel = char.level; const rawVoc = char.vocation.toUpperCase();
-            if (rawVoc === 'NONE') return interaction.editReply(`❌ Rookgaardian.`);
-
-            // Determine exact choice based on Puffin status
-            const isPuffin = (char.guild?.name === "Puffin Dragons") || db.prepare('SELECT char_name FROM whitelist WHERE char_name = ?').get(charName);
-            let finalChoice = (qType === 'LASTRESORT') ? 'LAST_RESORT' : (isPuffin || qType !== 'MAIN' ? bossChoice : `PUBLIC_${bossChoice}`);
-
-            // 🧠 SMART DUPLICATE CHECK
-            const existingSignup = db.prepare('SELECT id, boss_choice FROM signups WHERE LOWER(character_name) = LOWER(?)').get(charName);
-            
-            if (existingSignup) {
-                const curr = existingSignup.boss_choice;
-                
-                if (curr === 'LAST_RESORT' || finalChoice === 'LAST_RESORT') {
-                    return interaction.editReply(`❌ Already signed up! (Reserves apply to the entire raid night)`);
-                }
-
-                if (
-                    (curr.includes('LLK') && (bossChoice === 'HOD' || bossChoice === 'BOTH')) ||
-                    (curr.includes('HOD') && (bossChoice === 'LLK' || bossChoice === 'BOTH'))
-                ) {
-                    const newChoice = isPuffin ? 'BOTH' : 'PUBLIC_BOTH';
-                    db.prepare('UPDATE signups SET boss_choice = ? WHERE id = ?').run(newChoice, existingSignup.id);
-                    
-                    return interaction.editReply(`✅ <@${interaction.user.id}>, **${charName}** upgraded! You are now signed up for **BOTH** bosses!`);
-                }
-
-                return interaction.editReply(`❌ You are already signed up for this!`);
-            }
-            
-            let vocAbbr = rawVoc; let vocEmoji = '❓';
-            if (rawVoc.includes('KNIGHT')) { vocAbbr = 'EK'; vocEmoji = '🛡️'; }
-            else if (rawVoc.includes('DRUID')) { vocAbbr = 'ED'; vocEmoji = '❄️'; }
-            else if (rawVoc.includes('SORCERER')) { vocAbbr = 'MS'; vocEmoji = '🔥'; }
-            else if (rawVoc.includes('PALADIN')) { vocAbbr = 'RP'; vocEmoji = '🏹'; }
-            else if (rawVoc.includes('MONK')) { vocAbbr = 'EM'; vocEmoji = '🥋'; }
-
-            if (charName === "Fortuna Felis") { vocEmoji = '👑'; }
-
-            db.prepare('INSERT INTO signups (discord_user_id, character_name, vocation, level, boss_choice, message_to_queen) VALUES (?, ?, ?, ?, ?, ?)')
-              .run(interaction.user.id, charName, `${vocEmoji} ${vocAbbr}`, charLevel, finalChoice, queenMessage);
-
-            let hypeLine = messages.getRandom(messages.standardHype);
-            if (charName === "Fortuna Felis") hypeLine = messages.getRandom(messages.leaderHype);
-
-            let snark = mode === 'lazy' ? `😒 **${messages.getRandom(messages.lazySnark)}**\n` : "";
-            let replyText = rawVoc.includes('MONK') ? `${snark}${messages.getRandom(messages.monkRoasts)}\n✅ <@${interaction.user.id}> added!` : `${snark}✅ <@${interaction.user.id}>, **${charName}** [Lvl ${charLevel}] ${hypeLine}`;
-            replyText += `\n👑 **Message to the court:** *"${queenMessage}"*`;
-
-            await interaction.editReply({ content: replyText });
-            raidManager.displayRoster(interaction.channel);
-        } catch (e) { console.error(e); await interaction.editReply("⚠️ API Error."); }
-    }
-});
-
-process.on('SIGTERM', () => { db.close(); process.exit(0); });
-client.login(process.env.DISCORD_TOKEN);
+            db
