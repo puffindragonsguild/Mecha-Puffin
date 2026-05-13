@@ -119,6 +119,38 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const btnId = interaction.customId;
 
+        // --- EVENT ORGANIZER BUTTON TRAPS (SPAWN MODALS) ---
+        if (interaction.customId.startsWith('lfg_btn_')) {
+            const lfgType = interaction.customId.replace('lfg_btn_', ''); // '5man', '10man', 'bane', or 'quest'
+            
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_lfg_${lfgType}`)
+                .setTitle(`Organize: ${lfgType.toUpperCase()}`);
+
+            // Shared Inputs
+            const charInput = new TextInputBuilder().setCustomId('lfgChar').setLabel("Your Character Name").setStyle(TextInputStyle.Short).setRequired(true);
+            const titleInput = new TextInputBuilder().setCustomId('lfgTitle').setLabel(lfgType === 'quest' ? "Which Quest?" : "Which Boss?").setStyle(TextInputStyle.Short).setRequired(true);
+            const timeInput = new TextInputBuilder().setCustomId('lfgTime').setLabel("Date & Time (e.g., 20:00 CEST or 'In 10m')").setStyle(TextInputStyle.Short).setRequired(true);
+            const infoInput = new TextInputBuilder().setCustomId('lfgInfo').setLabel(lfgType === 'quest' ? "Level Req / Mission stage?" : "Vocs Needed / Extra Info").setStyle(TextInputStyle.Paragraph).setRequired(false);
+
+            const r1 = new ActionRowBuilder().addComponents(charInput);
+            const r2 = new ActionRowBuilder().addComponents(titleInput);
+            const r3 = new ActionRowBuilder().addComponents(timeInput);
+            
+            // Quest gets the special Wiki link box
+            if (lfgType === 'quest') {
+                const wikiInput = new TextInputBuilder().setCustomId('lfgWiki').setLabel("Wiki Link (Optional)").setStyle(TextInputStyle.Short).setRequired(false);
+                const rWiki = new ActionRowBuilder().addComponents(wikiInput);
+                const r4 = new ActionRowBuilder().addComponents(infoInput);
+                modal.addComponents(r1, r2, rWiki, r3, r4);
+            } else {
+                const r4 = new ActionRowBuilder().addComponents(infoInput);
+                modal.addComponents(r1, r2, r3, r4);
+            }
+
+            return interaction.showModal(modal);
+        }
+
         // --- THE ADVANCED DROPOUT BUTTON TRAP ---
         if (btnId === 'choice_DROPOUT' || btnId === 'dropout_btn') {
             const userId = interaction.user.id;
