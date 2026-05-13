@@ -17,7 +17,7 @@ module.exports = {
         const raidType = interaction.options.getString('type');
 
         if (raidType === 'dt') {
-            raidManager.setGatesOpen(true);
+            raidManager.setGatesOpen(true, db);
             const raidDate = raidManager.getNextWednesday(); 
             const dtEmbed = {
                 title: "🚨 LAST LOREKEEPER & WORLD DEVOURER 🚨",
@@ -33,7 +33,7 @@ module.exports = {
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LLK').setLabel('LLK').setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
                 new ButtonBuilder().setCustomId('choice_HOD').setLabel('HoD').setStyle(ButtonStyle.Success).setEmoji('🛡️'),
-                new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥')
+                new ButtonBuilder().setCustomId('choice_BOTH').setLabel('Both').setStyle(ButtonStyle.Danger).setEmoji('🔥'),
                 new ButtonBuilder().setCustomId('choice_DROPOUT').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃')
             );
 
@@ -41,7 +41,7 @@ module.exports = {
             raidManager.startHypeLoop(interaction.channel, 'Double Trouble', db);
 
         } else if (raidType === 'feru') {
-            raidManager.setGatesOpen(true);
+            raidManager.setGatesOpen(true, db);
             const raidDate = raidManager.getNextWednesday();
             const feruEmbed = {
                 title: "🧙‍♂️ FERUMBRAS 🧙‍♂️",
@@ -54,7 +54,7 @@ module.exports = {
             };
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️')
+                new ButtonBuilder().setCustomId('choice_FERU').setLabel('Ferumbras').setStyle(ButtonStyle.Danger).setEmoji('🧙‍♂️'),
                 new ButtonBuilder().setCustomId('choice_DROPOUT').setLabel('Drop Out').setStyle(ButtonStyle.Secondary).setEmoji('🏃')
             );
 
@@ -62,7 +62,7 @@ module.exports = {
             raidManager.startHypeLoop(interaction.channel, 'Ferumbras', db);
 
         } else if (raidType === 'reserves') {
-            raidManager.setGatesOpen(true);
+            raidManager.setGatesOpen(true, db);
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('choice_LASTRESORT').setLabel('Last Resort').setStyle(ButtonStyle.Secondary).setEmoji('🆘')
             );
