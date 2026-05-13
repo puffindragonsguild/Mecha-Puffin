@@ -7,7 +7,7 @@ const CORE_GUILDS = ["Puffin Dragons", "Slightly Smaller Dragons", "Noobemon"];
 let radarIntervals = { FRIENDLY: null, NAUGHTY: null };
 let lastRadarMessages = { FRIENDLY: null, NAUGHTY: null };
 let lastOnlineCounts = { FRIENDLY: -1, NAUGHTY: -1 };
-let previousNaughtyOnline = null; // Used to prevent spamming on bot restarts
+let previousNaughtyOnline = null; 
 
 const formatVoc = (voc) => {
     const v = voc.toLowerCase();
@@ -29,9 +29,8 @@ async function buildRadarData(db, type) {
         let totalOnline = 0;
         let output = [];
         let currentNaughtyNames = [];
-        let currentNaughtyDetails = []; // 👈 New: Stores the voc and level for the DMs
+        let currentNaughtyDetails = []; 
 
-        // 1. Filter out what to fetch based on radar type
         if (type === 'FRIENDLY') {
             const friendlyGuilds = trackedGuildsDB.filter(g => g.type === 'FRIENDLY').map(g => g.guild_name);
             guildsToFetch = [...CORE_GUILDS, ...friendlyGuilds];
@@ -43,7 +42,6 @@ async function buildRadarData(db, type) {
             charsToTrack.naughty = trackedCharsDB.filter(c => c.type === 'NAUGHTY').map(c => c.char_name.toLowerCase());
         }
 
-        // 2. Fetch the Data
         const apiCalls = guildsToFetch.map(guild => 
             fetch(`https://api.tibiadata.com/v4/guild/${encodeURIComponent(guild)}`).then(res => res.json()).catch(() => ({}))
         );
@@ -54,8 +52,34 @@ async function buildRadarData(db, type) {
         const guildResults = results; 
 
         const onlineWorldPlayers = worldData?.world?.online_players || [];
+        const onlineNamesList = onlineWorldPlayers.map(p => p.name.toLowerCase());
 
-        // Helper to process guild results
+        // ⏱️ STOPWATCH CLEANUP: If the API worked, purge logged-off players from the DB
+        if (onlineNamesList.length > 0) {
+            const activeTimers = db.prepare('SELECT char_name FROM online_timers').all();
+            const deleteStmt = db.prepare('DELETE FROM online_timers WHERE char_name = ?');
+            for (const timer of activeTimers) {
+                if (!onlineNamesList.includes(timer.char_name)) {
+                    deleteStmt.run(timer.char_name);
+                }
+            }
+        }
+
+        // ⏱️ STOPWATCH MATH HELPER
+        const getTimerString = (name) => {
+            const lowerName = name.toLowerCase();
+            let record = db.prepare('SELECT spotted_at FROM online_timers WHERE char_name = ?').get(lowerName);
+            if (!record) {
+                const now = Date.now();
+                db.prepare('INSERT INTO online_timers (char_name, spotted_at) VALUES (?, ?)').run(lowerName, now);
+                return `\`[0m]\``;
+            }
+            const mins = Math.floor((Date.now() - record.spotted_at) / 60000);
+            const hrs = Math.floor(mins / 60);
+            if (hrs > 0) return `\`[${hrs}h ${mins % 60}m]\``;
+            return `\`[${mins}m]\``;
+        };
+
         const processGuild = (guildName, apiData) => {
             if (!apiData?.guild?.members) return null;
             const onlineMembers = apiData.guild.members.filter(m => m.status === 'online');
@@ -65,12 +89,11 @@ async function buildRadarData(db, type) {
 
             let text = `**${guildName}:**\n`;
             onlineMembers.forEach(m => {
-                text += `${formatVoc(m.vocation)} ${m.name} (${m.level})\n`;
+                text += `${formatVoc(m.vocation)} ${m.name} (${m.level}) ${getTimerString(m.name)}\n`;
             });
             return text + '\n';
         };
 
-        // 3. Build the output text
         if (type === 'FRIENDLY') {
             CORE_GUILDS.forEach((guildName, index) => {
                 const guildText = processGuild(guildName, guildResults[index]);
@@ -80,7 +103,7 @@ async function buildRadarData(db, type) {
             const onlineAlts = onlineWorldPlayers.filter(p => charsToTrack.alts.includes(p.name.toLowerCase()));
             if (onlineAlts.length > 0) {
                 totalOnline += onlineAlts.length;
-                output.push(`**Puffin Alts:**\n` + onlineAlts.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+                output.push(`**Puffin Alts:**\n` + onlineAlts.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level}) ${getTimerString(p.name)}`).join('\n') + '\n\n');
             }
 
             const friendlyGuilds = guildsToFetch.slice(CORE_GUILDS.length);
@@ -92,7 +115,7 @@ async function buildRadarData(db, type) {
             const onlineFriends = onlineWorldPlayers.filter(p => charsToTrack.friends.includes(p.name.toLowerCase()));
             if (onlineFriends.length > 0) {
                 totalOnline += onlineFriends.length;
-                output.push(`**Friends:**\n` + onlineFriends.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+                output.push(`**Friends:**\n` + onlineFriends.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level}) ${getTimerString(p.name)}`).join('\n') + '\n\n');
             }
         } else if (type === 'NAUGHTY') {
             guildsToFetch.forEach((guildName, index) => {
@@ -113,10 +136,9 @@ async function buildRadarData(db, type) {
                 onlineNaughty.forEach(p => {
                     currentNaughtyDetails.push({ name: p.name, voc: formatVoc(p.vocation), level: p.level });
                 });
-                output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level})`).join('\n') + '\n\n');
+                output.push(`**Naughty Characters:**\n` + onlineNaughty.map(p => `${formatVoc(p.vocation)} ${p.name} (${p.level}) ${getTimerString(p.name)}`).join('\n') + '\n\n');
             }
             
-            // Remove duplicates in case someone is in a naughty guild AND tracked individually
             const uniqueDetailsMap = new Map();
             currentNaughtyDetails.forEach(p => uniqueDetailsMap.set(p.name, p));
             currentNaughtyDetails = Array.from(uniqueDetailsMap.values());
@@ -131,7 +153,7 @@ async function buildRadarData(db, type) {
             .setTitle(title)
             .setColor(color)
             .setDescription(description)
-            .setFooter({ text: "Auto-updates every 5 minutes" })
+            .setFooter({ text: "Auto-updates every 5 mins | Timers track since first spotted" })
             .setTimestamp();
 
         return { embed, totalOnline, currentNaughtyNames, currentNaughtyDetails };
@@ -147,7 +169,6 @@ async function updateRadarMessage(channel, db, type) {
     const { embed, totalOnline, currentNaughtyNames, currentNaughtyDetails } = await buildRadarData(db, type);
     const taskName = type === 'FRIENDLY' ? 'RADAR_FRIENDLY' : 'RADAR_NAUGHTY';
 
-    // 1. Message Editing Logic
     if (!lastRadarMessages[type]) {
         lastRadarMessages[type] = await channel.send({ embeds: [embed] });
         db.prepare('UPDATE active_tasks SET extra_data = ? WHERE task_name = ?').run(lastRadarMessages[type].id, taskName);
@@ -160,12 +181,9 @@ async function updateRadarMessage(channel, db, type) {
         }
     }
 
-    // 2. Channel Rename Logic (Only rename if the number changed)
     if (totalOnline !== -1 && totalOnline !== lastOnlineCounts[type]) {
         lastOnlineCounts[type] = totalOnline;
-        
         const newName = type === 'FRIENDLY' ? `puffins-online-${totalOnline}` : `naughty-online-${totalOnline}`;
-        
         try {
             await channel.setName(newName);
         } catch (e) {
@@ -173,35 +191,29 @@ async function updateRadarMessage(channel, db, type) {
         }
     }
 
-    // 3. Naughty DM Alert Logic (Updated Layout)
     if (type === 'NAUGHTY' && currentNaughtyNames) {
         if (previousNaughtyOnline !== null) {
-            // Find enemies that are online NOW, but were NOT online 5 minutes ago
             const newlyOnlineNames = currentNaughtyNames.filter(name => !previousNaughtyOnline.includes(name));
             
             if (newlyOnlineNames.length > 0) {
-                // Match the new names with their vocation and level details
                 const newlyOnlineDetails = currentNaughtyDetails.filter(p => newlyOnlineNames.includes(p.name));
-                
-                // Format them nicely with comma separation: "🛡️ Name (300), 🔥 Name2 (250)"
                 const formattedNames = newlyOnlineDetails.map(p => `${p.voc} ${p.name} (${p.level})`).join(', ');
 
                 const subscribers = db.prepare('SELECT discord_user_id FROM alert_subscribers').all();
                 if (subscribers.length > 0) {
-                    const alertMsg = `🚨 **NAUGHTY ALERT (${newlyOnlineNames.length})** 🚨\n${formattedNames}`;
+                    const alertMsg = `🚨 **NAUGHTY ALERT (${newlyOnlineNames.length})** 🚨\nThe Queen's scouts spotted the following enemies logging in:\n${formattedNames}`;
                     
                     for (const sub of subscribers) {
                         try {
                             const user = await channel.client.users.fetch(sub.discord_user_id);
                             await user.send(alertMsg);
                         } catch (e) {
-                            console.error(`Could not DM user ${sub.discord_user_id}. Their DMs might be closed.`);
+                            console.error(`Could not DM user ${sub.discord_user_id}.`);
                         }
                     }
                 }
             }
         }
-        // Save the current list so we can compare it next time
         previousNaughtyOnline = currentNaughtyNames;
     }
 }
