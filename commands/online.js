@@ -9,6 +9,7 @@ const formatVoc = (voc) => {
     if (v.includes('druid')) return '❄️ ED';
     if (v.includes('sorcerer')) return '🔥 MS';
     if (v.includes('paladin')) return '🏹 RP';
+    if (v.includes('monk')) return '🧘🏻‍♂️ EM';
     return '❓ None';
 };
 
