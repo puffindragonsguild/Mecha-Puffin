@@ -10,7 +10,7 @@ if (!fs.existsSync(dataFolder)) {
     fs.mkdirSync(dataFolder, { recursive: true });
 }
 
-const dbPath = path.join(dataFolder, 'puffin.db');
+const dbPath = path.join(dataFolder, '/data/puffin.db');
 const db = new Database(dbPath);
 
 
